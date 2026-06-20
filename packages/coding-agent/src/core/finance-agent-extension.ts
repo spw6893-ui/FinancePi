@@ -1,4 +1,15 @@
-import type { SymbolContextOptions } from "@earendil-works/pi-finance";
+import type {
+	CompareSymbolsResult,
+	Fundamentals,
+	History,
+	MarketBrief,
+	NewsResult,
+	Quote,
+	SourceHealth,
+	SymbolContext,
+	SymbolContextOptions,
+	TechnicalSnapshot,
+} from "@earendil-works/pi-finance";
 import { buildTechnicalSnapshot, FinanceClient } from "@earendil-works/pi-finance";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI } from "./extensions/types.ts";
@@ -30,11 +41,213 @@ function optionsFromParams(params: {
 }
 
 export function financeTextResult(label: string, details: unknown) {
-	const json = JSON.stringify(details, null, 2);
 	return {
-		content: [{ type: "text" as const, text: `${label} fetched.\n\n${json}` }],
+		content: [{ type: "text" as const, text: formatFinanceDetails(label, details) }],
 		details,
 	};
+}
+
+function formatFinanceDetails(label: string, details: unknown): string {
+	if (isSourceResult<Quote | null>(details)) return formatQuoteResult(label, details);
+	if (isSourceResult<History>(details)) return formatHistoryResult(label, details);
+	if (isSourceResult<NewsResult>(details)) return formatNewsResult(label, details);
+	if (isSourceResult<Fundamentals | null>(details)) return formatFundamentalsResult(label, details);
+	if (isTechnicalDetails(details)) return formatTechnicalDetails(label, details);
+	if (isSymbolContext(details)) return formatSymbolContext(label, details);
+	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
+		const contexts = details.contexts.slice(0, 10);
+		return [
+			`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+			`asOf=${details.asOf}`,
+			formatDegraded(details.degradedReasons),
+			"",
+			"symbols_csv:",
+			"symbol,price,priceSource,latestClose,trend,newsCount,degradedReasons",
+			...contexts.map((context) =>
+				csvRow([
+					context.symbol,
+					context.quote?.price,
+					context.quote?.source,
+					context.technicalSnapshot?.latestClose,
+					context.technicalSnapshot?.trend,
+					context.news.items.length,
+					context.degradedReasons.join("|"),
+				]),
+			),
+		].join("\n");
+	}
+	return `${label} fetched. Full raw result is preserved in tool details.`;
+}
+
+type SourceResult<T> = {
+	value: T;
+	health: SourceHealth;
+	degradedReason?: string;
+};
+
+function isSourceResult<T>(value: unknown): value is SourceResult<T> {
+	return Boolean(value && typeof value === "object" && "value" in value && "health" in value);
+}
+
+function isSymbolContext(value: unknown): value is SymbolContext {
+	return Boolean(
+		value &&
+			typeof value === "object" &&
+			"symbol" in value &&
+			"sourceHealth" in value &&
+			"technicalSnapshot" in value,
+	);
+}
+
+function isCompareSymbolsResult(value: unknown): value is CompareSymbolsResult {
+	return Boolean(value && typeof value === "object" && "contexts" in value && "symbols" in value);
+}
+
+function isMarketBrief(value: unknown): value is MarketBrief {
+	return isCompareSymbolsResult(value);
+}
+
+function isTechnicalDetails(value: unknown): value is {
+	historyHealth: SourceHealth;
+	technicalSnapshot: TechnicalSnapshot | null;
+	degradedReasons: string[];
+} {
+	return Boolean(value && typeof value === "object" && "technicalSnapshot" in value && "historyHealth" in value);
+}
+
+function formatQuoteResult(label: string, result: SourceResult<Quote | null>): string {
+	return [
+		`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		result.value
+			? `quote: symbol=${result.value.symbol}, price=${formatValue(result.value.price)}, currency=${formatValue(result.value.currency)}, exchange=${formatValue(result.value.exchange)}, marketCap=${formatValue(result.value.marketCap)}, asOf=${result.value.asOf}, source=${result.value.source}`
+			: "quote: unavailable",
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+function formatHistoryResult(label: string, result: SourceResult<History>): string {
+	const bars = result.value.bars.slice(-10);
+	return [
+		`${label} fetched. Compact history summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		`history: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, shownBars=${bars.length}`,
+		"",
+		"bars_csv:",
+		"time,open,high,low,close,volume",
+		...bars.map((bar) => csvRow([bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume])),
+	].join("\n");
+}
+
+function formatNewsResult(label: string, result: SourceResult<NewsResult>): string {
+	const items = result.value.items.slice(0, 8);
+	return [
+		`${label} fetched. Compact news summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		`news: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalItems=${result.value.items.length}, shownItems=${items.length}`,
+		"",
+		"news_csv:",
+		"publishedAt,publisher,title",
+		...items.map((item) => csvRow([item.publishedAt, item.publisher, item.title])),
+	].join("\n");
+}
+
+function formatFundamentalsResult(label: string, result: SourceResult<Fundamentals | null>): string {
+	const facts = result.value?.facts;
+	return [
+		`${label} fetched. Compact SEC facts summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		result.value
+			? `company: symbol=${result.value.symbol}, companyName=${formatValue(result.value.companyName)}, cik=${formatValue(result.value.cik)}, asOf=${result.value.asOf}, source=${result.value.source}`
+			: "company: unavailable",
+		facts?.revenue ? `revenue: ${formatFact(facts.revenue)}` : undefined,
+		facts?.netIncome ? `netIncome: ${formatFact(facts.netIncome)}` : undefined,
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+function formatTechnicalDetails(
+	label: string,
+	details: {
+		historyHealth: SourceHealth;
+		technicalSnapshot: TechnicalSnapshot | null;
+		degradedReasons: string[];
+	},
+): string {
+	const snapshot = details.technicalSnapshot;
+	return [
+		`${label} fetched. Compact technical summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(details.historyHealth),
+		formatDegraded(details.degradedReasons),
+		snapshot
+			? `technical: symbol=${snapshot.symbol}, period=${snapshot.period}, latestClose=${formatValue(snapshot.latestClose)}, return1d=${formatValue(snapshot.return1d)}, return5d=${formatValue(snapshot.return5d)}, return20d=${formatValue(snapshot.return20d)}, sma20=${formatValue(snapshot.sma20)}, sma50=${formatValue(snapshot.sma50)}, trend=${snapshot.trend}, asOf=${formatValue(snapshot.asOf)}, source=${snapshot.source}`
+			: "technical: unavailable",
+	].join("\n");
+}
+
+function formatSymbolContext(label: string, context: SymbolContext): string {
+	const bars = context.history.bars.slice(-8);
+	const news = context.news.items.slice(0, 6);
+	return [
+		`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}`,
+		formatDegraded(context.degradedReasons),
+		"",
+		"source_health_csv:",
+		"source,status,latestAt,degradedReason",
+		...context.sourceHealth.map((health) =>
+			csvRow([health.source, health.status, health.latestAt, health.degradedReason]),
+		),
+		"",
+		`quote: price=${formatValue(context.quote?.price)}, currency=${formatValue(context.quote?.currency)}, exchange=${formatValue(context.quote?.exchange)}, marketCap=${formatValue(context.quote?.marketCap)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
+		context.technicalSnapshot
+			? `technical: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, return1d=${formatValue(context.technicalSnapshot.return1d)}, return5d=${formatValue(context.technicalSnapshot.return5d)}, return20d=${formatValue(context.technicalSnapshot.return20d)}, sma20=${formatValue(context.technicalSnapshot.sma20)}, sma50=${formatValue(context.technicalSnapshot.sma50)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}, source=${context.technicalSnapshot.source}`
+			: "technical: unavailable",
+		context.fundamentals
+			? `fundamentals: companyName=${formatValue(context.fundamentals.companyName)}, revenue=${formatFact(context.fundamentals.facts.revenue)}, netIncome=${formatFact(context.fundamentals.facts.netIncome)}, source=${context.fundamentals.source}, asOf=${context.fundamentals.asOf}`
+			: "fundamentals: unavailable",
+		"",
+		`bars_csv_last_${bars.length}:`,
+		"time,open,high,low,close,volume",
+		...bars.map((bar) => csvRow([bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume])),
+		"",
+		`news_csv_top_${news.length}:`,
+		"publishedAt,publisher,title",
+		...news.map((item) => csvRow([item.publishedAt, item.publisher, item.title])),
+	].join("\n");
+}
+
+function formatHealth(health: SourceHealth): string {
+	return `health: source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}, degradedReason=${formatValue(health.degradedReason)}`;
+}
+
+function formatDegraded(reasons: string[]): string {
+	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+}
+
+function formatFact(fact: Fundamentals["facts"]["revenue"]): string {
+	if (!fact) return "unavailable";
+	return `${fact.label}=${fact.value}${fact.unit ? ` ${fact.unit}` : ""}, fy=${formatValue(fact.fiscalYear)}, fp=${formatValue(fact.fiscalPeriod)}, form=${formatValue(fact.form)}, filed=${formatValue(fact.filed)}`;
+}
+
+function formatValue(value: unknown): string {
+	if (value === null || value === undefined || value === "") return "NA";
+	if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NA";
+	return String(value);
+}
+
+function csvRow(values: unknown[]): string {
+	return values.map(csvCell).join(",");
+}
+
+function csvCell(value: unknown): string {
+	const text = formatValue(value);
+	if (!/[",\n]/.test(text)) return text;
+	return `"${text.replaceAll('"', '""')}"`;
 }
 
 const quoteTool = defineTool({

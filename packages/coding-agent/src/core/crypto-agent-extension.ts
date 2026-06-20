@@ -1,4 +1,11 @@
-import type { CryptoContextOptions } from "@earendil-works/pi-crypto";
+import type {
+	CryptoContext,
+	CryptoContextOptions,
+	CryptoDerivatives,
+	CryptoHistory,
+	CryptoQuote,
+	SourceHealth,
+} from "@earendil-works/pi-crypto";
 import { CryptoClient } from "@earendil-works/pi-crypto";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI } from "./extensions/types.ts";
@@ -22,11 +29,129 @@ function optionsFromParams(params: { interval?: string; limit?: number }): Crypt
 }
 
 export function cryptoTextResult(label: string, details: unknown) {
-	const json = JSON.stringify(details, null, 2);
 	return {
-		content: [{ type: "text" as const, text: `${label} fetched.\n\n${json}` }],
+		content: [{ type: "text" as const, text: formatCryptoDetails(label, details) }],
 		details,
 	};
+}
+
+function formatCryptoDetails(label: string, details: unknown): string {
+	if (isSourceResult<CryptoQuote | null>(details)) return formatQuoteResult(label, details);
+	if (isSourceResult<CryptoHistory>(details)) return formatHistoryResult(label, details);
+	if (isSourceResult<CryptoDerivatives | null>(details)) return formatDerivativesResult(label, details);
+	if (isCryptoContext(details)) return formatCryptoContext(label, details);
+	return `${label} fetched. Full raw result is preserved in tool details.`;
+}
+
+type SourceResult<T> = {
+	value: T;
+	health: SourceHealth;
+	degradedReason?: string;
+};
+
+function isSourceResult<T>(value: unknown): value is SourceResult<T> {
+	return Boolean(value && typeof value === "object" && "value" in value && "health" in value);
+}
+
+function isCryptoContext(value: unknown): value is CryptoContext {
+	return Boolean(
+		value &&
+			typeof value === "object" &&
+			"binanceSymbol" in value &&
+			"sourceHealth" in value &&
+			"derivatives" in value,
+	);
+}
+
+function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | null>): string {
+	return [
+		`${label} fetched. Compact Binance data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		result.value
+			? `quote: symbol=${result.value.binanceSymbol}, lastPrice=${formatValue(result.value.lastPrice)}, changePercent24h=${formatValue(result.value.changePercent24h)}, baseVolume24h=${formatValue(result.value.baseVolume24h)}, quoteVolume24h=${formatValue(result.value.quoteVolume24h)}, asOf=${result.value.asOf}, source=${result.value.source}`
+			: "quote: unavailable",
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+function formatHistoryResult(label: string, result: SourceResult<CryptoHistory>): string {
+	const bars = result.value.bars.slice(-10);
+	return [
+		`${label} fetched. Compact Binance kline summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		`history: symbol=${result.value.binanceSymbol}, interval=${result.value.interval}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, shownBars=${bars.length}`,
+		"",
+		"bars_csv:",
+		"openTime,closeTime,open,high,low,close,volume,quoteVolume",
+		...bars.map((bar) =>
+			csvRow([bar.openTime, bar.closeTime, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.quoteVolume]),
+		),
+	].join("\n");
+}
+
+function formatDerivativesResult(label: string, result: SourceResult<CryptoDerivatives | null>): string {
+	return [
+		`${label} fetched. Compact Binance futures summary follows; full raw result is preserved in tool details, not repeated here.`,
+		formatHealth(result.health),
+		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		result.value
+			? `derivatives: symbol=${result.value.binanceSymbol}, fundingRate=${formatValue(result.value.fundingRate)}, fundingTime=${formatValue(result.value.fundingTime)}, openInterest=${formatValue(result.value.openInterest)}, openInterestTime=${formatValue(result.value.openInterestTime)}, source=${result.value.source}`
+			: "derivatives: unavailable",
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+function formatCryptoContext(label: string, context: CryptoContext): string {
+	const bars = context.history.bars.slice(-10);
+	return [
+		`${label} fetched. Compact Binance market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`asset=${context.asset}, symbol=${context.binanceSymbol}, quoteAsset=${context.quoteAsset}, asOf=${context.asOf}`,
+		formatDegraded(context.degradedReasons),
+		"",
+		"source_health_csv:",
+		"source,status,latestAt,degradedReason",
+		...context.sourceHealth.map((health) =>
+			csvRow([health.source, health.status, health.latestAt, health.degradedReason]),
+		),
+		"",
+		`quote: lastPrice=${formatValue(context.quote?.lastPrice)}, changePercent24h=${formatValue(context.quote?.changePercent24h)}, baseVolume24h=${formatValue(context.quote?.baseVolume24h)}, quoteVolume24h=${formatValue(context.quote?.quoteVolume24h)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
+		context.derivatives
+			? `derivatives: fundingRate=${formatValue(context.derivatives.fundingRate)}, fundingTime=${formatValue(context.derivatives.fundingTime)}, openInterest=${formatValue(context.derivatives.openInterest)}, openInterestTime=${formatValue(context.derivatives.openInterestTime)}, source=${context.derivatives.source}`
+			: "derivatives: unavailable",
+		"",
+		`bars_csv_last_${bars.length}:`,
+		"openTime,closeTime,open,high,low,close,volume,quoteVolume",
+		...bars.map((bar) =>
+			csvRow([bar.openTime, bar.closeTime, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.quoteVolume]),
+		),
+	].join("\n");
+}
+
+function formatHealth(health: SourceHealth): string {
+	return `health: source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}, degradedReason=${formatValue(health.degradedReason)}`;
+}
+
+function formatDegraded(reasons: string[]): string {
+	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+}
+
+function formatValue(value: unknown): string {
+	if (value === null || value === undefined || value === "") return "NA";
+	if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NA";
+	return String(value);
+}
+
+function csvRow(values: unknown[]): string {
+	return values.map(csvCell).join(",");
+}
+
+function csvCell(value: unknown): string {
+	const text = formatValue(value);
+	if (!/[",\n]/.test(text)) return text;
+	return `"${text.replaceAll('"', '""')}"`;
 }
 
 const quoteTool = defineTool({
