@@ -97,44 +97,14 @@ export class FinanceClient {
 
 	async getQuote(symbol: string): Promise<SourceResult<Quote | null>> {
 		const normalized = normalizeSymbol(symbol);
-		const url = `${YAHOO_QUERY_1}/v7/finance/quote?symbols=${encodeURIComponent(normalized)}`;
-		try {
-			const payload = await this.fetchJson(url, "yahoo_quote");
-			const result = asArray(asRecord(asRecord(payload).quoteResponse).result)[0];
-			const item = asRecord(result);
-			if (!item.symbol) {
-				return this.degraded(null, "yahoo_quote", "quote_missing");
-			}
-			const asOf = isoFromUnixSeconds(item.regularMarketTime) ?? this.now().toISOString();
-			return {
-				value: {
-					symbol: normalized,
-					market: inferMarketCode(normalized),
-					name: stringOrUndefined(item.shortName) ?? stringOrUndefined(item.longName),
-					price: numberOrNull(item.regularMarketPrice),
-					changePercent: numberOrNull(item.regularMarketChangePercent),
-					currency: stringOrUndefined(item.currency),
-					exchange: stringOrUndefined(item.exchange),
-					marketCap: numberOrNull(item.marketCap),
-					asOf,
-					source: "yahoo_quote",
-				},
-				health: { source: "yahoo_quote", status: "ok", latestAt: asOf },
-			};
-		} catch (error) {
-			const reason = this.errorReason("quote", error);
-			return this.getQuoteFromChartFallback(normalized, reason);
-		}
+		return this.getQuoteFromChart(normalized);
 	}
 
-	private async getQuoteFromChartFallback(
-		normalized: string,
-		degradedReason: string,
-	): Promise<SourceResult<Quote | null>> {
+	private async getQuoteFromChart(normalized: string): Promise<SourceResult<Quote | null>> {
 		const history = await this.getHistory(normalized, "5d", "1d");
 		const latestBar = latestBarWithClose(history.value.bars);
 		if (!latestBar) {
-			return this.degraded(null, "yahoo_quote", degradedReason);
+			return this.degraded(null, "yahoo_chart", history.degradedReason ?? "chart_quote_missing");
 		}
 		const latestIndex = history.value.bars.indexOf(latestBar);
 		const previousBar = latestBarWithClose(history.value.bars, latestIndex);
@@ -150,15 +120,15 @@ export class FinanceClient {
 				price: latestBar.close,
 				changePercent,
 				asOf: latestBar.time,
-				source: "yahoo_chart_fallback",
+				source: "yahoo_chart_quote",
 			},
 			health: {
-				source: "yahoo_quote+yahoo_chart",
-				status: "degraded",
+				source: "yahoo_chart",
+				status: history.health.status,
 				latestAt: latestBar.time,
-				degradedReason,
+				degradedReason: history.degradedReason,
 			},
-			degradedReason,
+			degradedReason: history.degradedReason,
 		};
 	}
 

@@ -133,12 +133,12 @@ describe("FinanceClient", () => {
 		);
 	});
 
-	it("falls back to chart latest close when Yahoo quote is rate limited", async () => {
+	it("uses free chart latest close for quotes without calling Yahoo quote", async () => {
 		const client = new FinanceClient({
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
-				if (text.includes("/v7/finance/quote")) return jsonResponse({ error: "rate limited" }, 429);
+				if (text.includes("/v7/finance/quote")) throw new Error("Yahoo quote should not be called");
 				if (text.includes("/v8/finance/chart")) return jsonResponse(chartPayload);
 				throw new Error(`unexpected URL ${text}`);
 			},
@@ -147,10 +147,10 @@ describe("FinanceClient", () => {
 		const quote = await client.getQuote("AAPL");
 
 		expect(quote.value?.price).toBe(200);
-		expect(quote.value?.source).toBe("yahoo_chart_fallback");
-		expect(quote.degradedReason).toBe("quote_http_429");
-		expect(quote.health.status).toBe("degraded");
-		expect(quote.health.source).toBe("yahoo_quote+yahoo_chart");
+		expect(quote.value?.source).toBe("yahoo_chart_quote");
+		expect(quote.degradedReason).toBeUndefined();
+		expect(quote.health.status).toBe("ok");
+		expect(quote.health.source).toBe("yahoo_chart");
 	});
 
 	it("uses a SEC-friendly user agent with contact information", async () => {
