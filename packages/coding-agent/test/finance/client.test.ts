@@ -132,4 +132,45 @@ describe("FinanceClient", () => {
 			expect.objectContaining({ source: "yahoo_news", status: "degraded" }),
 		);
 	});
+
+	it("falls back to chart latest close when Yahoo quote is rate limited", async () => {
+		const client = new FinanceClient({
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				if (text.includes("/v7/finance/quote")) return jsonResponse({ error: "rate limited" }, 429);
+				if (text.includes("/v8/finance/chart")) return jsonResponse(chartPayload);
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const quote = await client.getQuote("AAPL");
+
+		expect(quote.value?.price).toBe(200);
+		expect(quote.value?.source).toBe("yahoo_chart_fallback");
+		expect(quote.degradedReason).toBe("quote_http_429");
+		expect(quote.health.status).toBe("degraded");
+		expect(quote.health.source).toBe("yahoo_quote+yahoo_chart");
+	});
+
+	it("uses a SEC-friendly user agent with contact information", async () => {
+		let secUserAgent = "";
+		const client = new FinanceClient({
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url, init) => {
+				const text = String(url);
+				if (text.includes("/files/company_tickers.json")) return jsonResponse(tickerMapPayload);
+				if (text.includes("/api/xbrl/companyfacts/")) {
+					secUserAgent = new Headers(init?.headers).get("user-agent") ?? "";
+					return jsonResponse(factsPayload);
+				}
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		await client.getSecFacts("AAPL");
+
+		expect(secUserAgent).toContain("@");
+		expect(secUserAgent).toContain("pi-finance-agent");
+	});
 });

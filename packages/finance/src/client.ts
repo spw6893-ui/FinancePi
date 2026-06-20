@@ -81,6 +81,14 @@ function latestFact(label: string, rawFact: unknown): FundamentalFact | undefine
 	return undefined;
 }
 
+function latestBarWithClose(bars: PriceBar[], beforeIndex = bars.length): PriceBar | undefined {
+	for (let index = Math.min(beforeIndex, bars.length) - 1; index >= 0; index--) {
+		const bar = bars[index];
+		if (bar.close !== null) return bar;
+	}
+	return undefined;
+}
+
 export class FinanceClient {
 	private readonly fetchImpl: typeof fetch;
 	private readonly now: () => Date;
@@ -90,7 +98,7 @@ export class FinanceClient {
 	constructor(options: FinanceClientOptions = {}) {
 		this.fetchImpl = options.fetch ?? fetch;
 		this.now = options.now ?? (() => new Date());
-		this.userAgent = options.userAgent ?? "pi-finance-agent/0.1 (https://github.com/earendil-works/pi)";
+		this.userAgent = options.userAgent ?? "pi-finance-agent/0.1 contact=agent-pi@example.invalid";
 	}
 
 	async getQuote(symbol: string): Promise<SourceResult<Quote | null>> {
@@ -120,8 +128,44 @@ export class FinanceClient {
 				health: { source: "yahoo_quote", status: "ok", latestAt: asOf },
 			};
 		} catch (error) {
-			return this.degraded(null, "yahoo_quote", this.errorReason("quote", error));
+			const reason = this.errorReason("quote", error);
+			return this.getQuoteFromChartFallback(normalized, reason);
 		}
+	}
+
+	private async getQuoteFromChartFallback(
+		normalized: string,
+		degradedReason: string,
+	): Promise<SourceResult<Quote | null>> {
+		const history = await this.getHistory(normalized, "5d", "1d");
+		const latestBar = latestBarWithClose(history.value.bars);
+		if (!latestBar) {
+			return this.degraded(null, "yahoo_quote", degradedReason);
+		}
+		const latestIndex = history.value.bars.indexOf(latestBar);
+		const previousBar = latestBarWithClose(history.value.bars, latestIndex);
+		const previousClose = previousBar?.close ?? null;
+		const changePercent =
+			latestBar.close !== null && previousClose !== null && previousClose !== 0
+				? ((latestBar.close - previousClose) / previousClose) * 100
+				: null;
+		return {
+			value: {
+				symbol: normalized,
+				market: inferMarketCode(normalized),
+				price: latestBar.close,
+				changePercent,
+				asOf: latestBar.time,
+				source: "yahoo_chart_fallback",
+			},
+			health: {
+				source: "yahoo_quote+yahoo_chart",
+				status: "degraded",
+				latestAt: latestBar.time,
+				degradedReason,
+			},
+			degradedReason,
+		};
 	}
 
 	async getHistory(symbol: string, range = "6mo", interval = "1d"): Promise<SourceResult<History>> {
