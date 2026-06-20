@@ -11,6 +11,7 @@ import {
 import type { Context, Model } from "../src/types.ts";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalHostedWebSearch = process.env.PI_OPENAI_HOSTED_WEB_SEARCH;
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -18,6 +19,11 @@ afterEach(() => {
 		delete process.env.PI_CODING_AGENT_DIR;
 	} else {
 		process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+	}
+	if (originalHostedWebSearch === undefined) {
+		delete process.env.PI_OPENAI_HOSTED_WEB_SEARCH;
+	} else {
+		process.env.PI_OPENAI_HOSTED_WEB_SEARCH = originalHostedWebSearch;
 	}
 	resetOpenAICodexWebSocketDebugStats();
 	vi.useRealTimers();
@@ -635,6 +641,68 @@ describe("openai-codex streaming", () => {
 		}).result();
 
 		expect(capturedPayload?.prompt_cache_key).toBe("x".repeat(64));
+	});
+
+	it("adds OpenAI hosted web_search to Codex Responses when PI_OPENAI_HOSTED_WEB_SEARCH is enabled", async () => {
+		process.env.PI_OPENAI_HOSTED_WEB_SEARCH = "1";
+		const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
+		process.env.PI_CODING_AGENT_DIR = tempDir;
+		const token = mockToken();
+		const sse = buildSSEPayload({ status: "completed" });
+		const encoder = new TextEncoder();
+		let requestedTools: unknown;
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: string | URL, init?: RequestInit) => {
+				const url = typeof input === "string" ? input : input.toString();
+				if (url === "https://api.github.com/repos/openai/codex/releases/latest") {
+					return new Response(JSON.stringify({ tag_name: "rust-v0.0.0" }), { status: 200 });
+				}
+				if (url.startsWith("https://raw.githubusercontent.com/openai/codex/")) {
+					return new Response("PROMPT", { status: 200, headers: { etag: '"etag"' } });
+				}
+				if (url === "https://chatgpt.com/backend-api/codex/responses") {
+					const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+					requestedTools = body?.tools;
+					return new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								controller.enqueue(encoder.encode(sse));
+								controller.close();
+							},
+						}),
+						{ status: 200, headers: { "content-type": "text/event-stream" } },
+					);
+				}
+				return new Response("not found", { status: 404 });
+			}),
+		);
+
+		const model: Model<"openai-codex-responses"> = {
+			id: "gpt-5.5",
+			name: "GPT-5.5",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: "https://chatgpt.com/backend-api",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 272000,
+			maxTokens: 128000,
+		};
+		const context: Context = {
+			systemPrompt: "You are a helpful assistant.",
+			messages: [{ role: "user", content: "Search current market news", timestamp: Date.now() }],
+		};
+
+		await streamOpenAICodexResponses(model, context, {
+			apiKey: token,
+			transport: "sse",
+			sessionId: "hosted-web-search-test",
+		}).result();
+
+		expect(requestedTools).toContainEqual({ type: "web_search" });
 	});
 
 	it("preserves gpt-5.5 xhigh reasoning effort from simple options", async () => {

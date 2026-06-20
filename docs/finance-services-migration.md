@@ -64,7 +64,9 @@ Pi includes provider-independent web research tools:
 - `web_search` returns a compact result summary and writes search hits to `.pi/artifacts/web/*.csv`.
 - `web_open` fetches a page, extracts readable text, and writes the extracted text to `.pi/artifacts/web/*.txt`.
 
-Set `PI_WEB_SEARCH_SEARXNG_URL` to a free/self-hosted SearxNG instance for reliable search. Without it, Pi attempts a best-effort public DuckDuckGo HTML search, which can degrade if the search engine blocks automated requests.
+For OpenAI Responses and OpenAI Codex Responses models, Pi also injects OpenAI's hosted `web_search` tool by default. In that mode Pi removes the local `web_search` function from the OpenAI request to avoid duplicate search tools, while keeping `web_open` available. Set `PI_OPENAI_HOSTED_WEB_SEARCH=0` to disable hosted web search.
+
+For non-OpenAI providers, set `PI_WEB_SEARCH_SEARXNG_URL` to a free/self-hosted SearxNG instance for reliable local search. Without it, Pi attempts a best-effort public DuckDuckGo HTML search, which can degrade if the search engine blocks automated requests.
 
 ## Source hierarchy
 

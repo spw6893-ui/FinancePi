@@ -35,6 +35,6 @@ Pi currently has local tools for:
 - US equity/ETF context: `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, `finance_market_brief`.
 - Crypto context: `crypto_quote`, `crypto_history`, `crypto_derivatives`, `crypto_context`.
 - User-configured MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
-- Web research context: `web_search`, `web_open`. Configure `PI_WEB_SEARCH_SEARXNG_URL` for reliable free/self-hosted search; otherwise DuckDuckGo HTML search is best-effort and may degrade.
+- Web research context: `web_search`, `web_open`. OpenAI Responses/OpenAI Codex Responses models use OpenAI hosted `web_search` by default and keep `web_open` as a local page-opening tool. Set `PI_OPENAI_HOSTED_WEB_SEARCH=0` to disable hosted search. For non-OpenAI providers, configure `PI_WEB_SEARCH_SEARXNG_URL` for reliable free/self-hosted search; otherwise DuckDuckGo HTML search is best-effort and may degrade.
 
 Keep the free stack intentionally small. Do not add broad free-tier APIs or paid institutional providers to the default agent path unless a specific feature needs them and the user provides working access.

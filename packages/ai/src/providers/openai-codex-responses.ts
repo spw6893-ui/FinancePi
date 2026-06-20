@@ -43,6 +43,7 @@ import {
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
+import { withOpenAIHostedWebSearchTool } from "./openai-hosted-tools.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -471,9 +472,11 @@ function buildRequestBody(
 		body.service_tier = options.serviceTier;
 	}
 
-	if (context.tools && context.tools.length > 0) {
-		body.tools = convertResponsesTools(context.tools, { strict: null });
-	}
+	body.tools = withOpenAIHostedWebSearchTool(
+		context.tools && context.tools.length > 0 ? convertResponsesTools(context.tools, { strict: null }) : undefined,
+		model,
+		options?.env,
+	);
 
 	if (options?.reasoningEffort !== undefined) {
 		const effort =

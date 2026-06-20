@@ -52,8 +52,15 @@ async function captureOpenAIResponseHeaders(
 }
 
 describe("openai-responses provider defaults", () => {
+	const originalHostedWebSearch = process.env.PI_OPENAI_HOSTED_WEB_SEARCH;
+
 	afterEach(() => {
 		vi.restoreAllMocks();
+		if (originalHostedWebSearch === undefined) {
+			delete process.env.PI_OPENAI_HOSTED_WEB_SEARCH;
+		} else {
+			process.env.PI_OPENAI_HOSTED_WEB_SEARCH = originalHostedWebSearch;
+		}
 	});
 
 	it("omits reasoning when no reasoning is requested", async () => {
@@ -89,6 +96,87 @@ describe("openai-responses provider defaults", () => {
 		expect(capturedPayload).not.toMatchObject({
 			reasoning: expect.anything(),
 		});
+	});
+
+	it("adds OpenAI hosted web_search when PI_OPENAI_HOSTED_WEB_SEARCH is enabled", async () => {
+		process.env.PI_OPENAI_HOSTED_WEB_SEARCH = "1";
+		const model = getModel("openai", "gpt-5.5");
+		let capturedPayload: { tools?: Array<{ type: string }> } | undefined;
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("data: [DONE]\n\n", {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}),
+		);
+
+		const stream = streamOpenAIResponses(
+			model,
+			{
+				systemPrompt: "sys",
+				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
+			},
+			{
+				apiKey: "test-key",
+				onPayload: (payload) => {
+					capturedPayload = payload as typeof capturedPayload;
+				},
+			},
+		);
+
+		for await (const event of stream) {
+			if (event.type === "done" || event.type === "error") break;
+		}
+
+		expect(capturedPayload?.tools).toContainEqual({ type: "web_search" });
+	});
+
+	it("uses hosted web_search instead of the local web_search function for OpenAI models", async () => {
+		const model = getModel("openai", "gpt-5.5");
+		let capturedPayload: { tools?: Array<{ type: string; name?: string }> } | undefined;
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("data: [DONE]\n\n", {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}),
+		);
+
+		const stream = streamOpenAIResponses(
+			model,
+			{
+				systemPrompt: "sys",
+				messages: [{ role: "user", content: "hi", timestamp: Date.now() }],
+				tools: [
+					{
+						name: "web_search",
+						description: "local web search",
+						parameters: { type: "object", properties: {}, additionalProperties: false },
+					},
+					{
+						name: "web_open",
+						description: "open page",
+						parameters: { type: "object", properties: {}, additionalProperties: false },
+					},
+				],
+			},
+			{
+				apiKey: "test-key",
+				onPayload: (payload) => {
+					capturedPayload = payload as typeof capturedPayload;
+				},
+			},
+		);
+
+		for await (const event of stream) {
+			if (event.type === "done" || event.type === "error") break;
+		}
+
+		expect(capturedPayload?.tools).toContainEqual({ type: "web_search" });
+		expect(capturedPayload?.tools).toContainEqual(expect.objectContaining({ type: "function", name: "web_open" }));
+		expect(capturedPayload?.tools).not.toContainEqual(
+			expect.objectContaining({ type: "function", name: "web_search" }),
+		);
 	});
 
 	it.each(["gpt-5.1", "gpt-5.2", "gpt-5.3-codex", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.5"] as const)(

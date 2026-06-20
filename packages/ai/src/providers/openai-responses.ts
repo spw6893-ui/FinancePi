@@ -20,6 +20,7 @@ import { headersToRecord } from "../utils/headers.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
+import { withOpenAIHostedWebSearchTool } from "./openai-hosted-tools.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -264,9 +265,11 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		params.service_tier = options.serviceTier;
 	}
 
-	if (context.tools && context.tools.length > 0) {
-		params.tools = convertResponsesTools(context.tools);
-	}
+	params.tools = withOpenAIHostedWebSearchTool(
+		context.tools && context.tools.length > 0 ? convertResponsesTools(context.tools) : undefined,
+		model,
+		options?.env,
+	);
 
 	if (model.reasoning) {
 		if (options?.reasoningEffort || options?.reasoningSummary) {
