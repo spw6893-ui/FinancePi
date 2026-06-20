@@ -137,14 +137,14 @@ describe("finance tool result content", () => {
 			"Finance MCP tool call",
 			{
 				value: {
-					server: "factset",
+					server: "custom-provider",
 					toolName: "get_estimates",
 					content: [{ type: "text", text: "NVDA revenue estimate: 1" }],
 					structuredContent: { ticker: "NVDA", rows: [{ value: 1 }] },
-					source: "mcp:factset",
+					source: "mcp:custom-provider",
 					asOf: "2026-06-21T00:00:00.000Z",
 				},
-				health: { source: "mcp:factset", status: "ok", latestAt: "2026-06-21T00:00:00.000Z" },
+				health: { source: "mcp:custom-provider", status: "ok", latestAt: "2026-06-21T00:00:00.000Z" },
 			},
 			{
 				cwd,
@@ -155,7 +155,7 @@ describe("finance tool result content", () => {
 			const text = result.content[0]?.text ?? "";
 
 			expect(text).toContain("Finance MCP tool call fetched");
-			expect(text).toContain("server=factset");
+			expect(text).toContain("server=custom-provider");
 			expect(text).toContain("tool=get_estimates");
 			expect(text).toContain("contentItems=1");
 			expect(text).toContain("structured=yes");
@@ -167,7 +167,7 @@ describe("finance tool result content", () => {
 			expect(artifactPath).toBeTruthy();
 			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
 			expect(csv).toContain("server,toolName,index,type,text");
-			expect(csv).toContain("factset,get_estimates,0,text,NVDA revenue estimate: 1");
+			expect(csv).toContain("custom-provider,get_estimates,0,text,NVDA revenue estimate: 1");
 		} finally {
 			await rm(cwd, { recursive: true, force: true });
 		}

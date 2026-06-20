@@ -19,10 +19,10 @@ function sseResponse(payload: unknown) {
 describe("FinanceMcpClient", () => {
 	const config: FinanceMcpConfig = {
 		mcpServers: {
-			factset: {
+			"custom-provider": {
 				type: "http",
-				url: "https://mcp.example/factset",
-				headers: { Authorization: "Bearer $" + "{FACTSET_MCP_TOKEN}" },
+				url: "https://mcp.example/custom-provider",
+				headers: { Authorization: "Bearer $" + "{CUSTOM_FINANCE_MCP_TOKEN}" },
 			},
 		},
 	};
@@ -31,7 +31,7 @@ describe("FinanceMcpClient", () => {
 		const methods: string[] = [];
 		const authHeaders: string[] = [];
 		const client = new FinanceMcpClient({
-			env: { FACTSET_MCP_TOKEN: "test-token" },
+			env: { CUSTOM_FINANCE_MCP_TOKEN: "test-token" },
 			now: () => new Date("2026-06-21T00:00:00.000Z"),
 			fetch: async (_url, init) => {
 				authHeaders.push(String(new Headers(init?.headers).get("authorization")));
@@ -64,10 +64,10 @@ describe("FinanceMcpClient", () => {
 			},
 		});
 
-		const result = await client.listTools(config, "factset");
+		const result = await client.listTools(config, "custom-provider");
 
 		expect(result.health.status).toBe("ok");
-		expect(result.health.source).toBe("mcp:factset");
+		expect(result.health.source).toBe("mcp:custom-provider");
 		expect(result.value.tools).toHaveLength(1);
 		expect(result.value.tools[0]?.name).toBe("get_company_profile");
 		expect(methods).toEqual(["initialize", "notifications/initialized", "tools/list"]);
@@ -100,10 +100,10 @@ describe("FinanceMcpClient", () => {
 			},
 		});
 
-		const result = await client.callTool(config, "factset", "get_estimates", { ticker: "NVDA" });
+		const result = await client.callTool(config, "custom-provider", "get_estimates", { ticker: "NVDA" });
 
 		expect(result.health.status).toBe("ok");
-		expect(result.value.server).toBe("factset");
+		expect(result.value.server).toBe("custom-provider");
 		expect(result.value.toolName).toBe("get_estimates");
 		expect(result.value.content).toEqual([{ type: "text", text: "NVDA revenue estimate: 1" }]);
 		expect(result.value.structuredContent).toEqual({ ticker: "NVDA" });

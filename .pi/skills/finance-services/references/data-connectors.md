@@ -2,25 +2,9 @@
 
 Source reference: https://github.com/anthropics/financial-services
 
-## Connector catalog
+## Connector policy
 
-Anthropic's financial-services repository lists these MCP-style provider categories:
-
-| Provider | Typical use |
-| --- | --- |
-| Daloopa | standardized company financials and KPIs |
-| Morningstar | funds, fundamentals, reference data |
-| S&P Global / Kensho | Capital IQ-style company, estimates, market data |
-| FactSet | company financials, estimates, ownership, market data |
-| Moody's | credit, ratings, macro and risk data |
-| MT Newswires | market news |
-| Aiera | earnings calls, transcripts, events |
-| LSEG | market data, rates, FX, analytics |
-| PitchBook | private markets, PE/VC, transactions |
-| Chronograph | private equity portfolio and fund data |
-| Egnyte / Box | document repositories |
-
-See `.pi/finance-mcp.example.json` for a corrected template manifest.
+Anthropic's financial-services repository includes paid institutional MCP-style providers. Pi intentionally does not list those endpoints in `.pi/finance-mcp.example.json` because they are not free anonymous data sources. Use the example only as a template for user-provided free, self-hosted, or explicitly licensed MCP servers.
 
 ## Data-source priority
 
@@ -32,7 +16,7 @@ Use the smallest reliable source set that can answer the question:
    - Yahoo chart/news for public US equity/ETF context. Treat chart-derived prices as latest available bars or closes, not guaranteed real-time quotes.
    - Binance public market data for crypto spot, klines, funding, and open interest.
 3. Optional free-key source: FRED for macro data, if a key is configured.
-4. Institutional MCP/data connectors only when `.pi/finance-mcp.json` is configured and the request needs premium data such as estimates, transcripts, ownership, institutional financials, private-market data, or audited data packs.
+4. User-configured MCP/data connectors only when `.pi/finance-mcp.json` points to a working free, self-hosted, or explicitly licensed server.
 5. Company investor relations materials for management commentary and segment/KPI detail.
 6. Reputable news or web search only for freshness, catalysts, or source discovery.
 
@@ -50,6 +34,6 @@ Pi currently has local tools for:
 
 - US equity/ETF context: `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, `finance_market_brief`.
 - Crypto context: `crypto_quote`, `crypto_history`, `crypto_derivatives`, `crypto_context`.
-- Institutional MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
+- User-configured MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
 
-Keep the free stack intentionally small. Do not add Alpha Vantage, FMP, Finnhub, Twelve Data, Polygon, CoinGecko, DefiLlama, or similar providers to the default agent path unless a specific feature needs them. When `.pi/finance-mcp.json` is configured, prefer MCP tools only for institutional-grade data that the free stack cannot provide.
+Keep the free stack intentionally small. Do not add broad free-tier APIs or paid institutional providers to the default agent path unless a specific feature needs them and the user provides working access.

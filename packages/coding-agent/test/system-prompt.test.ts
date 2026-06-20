@@ -77,7 +77,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("compact free-source stack");
 			expect(prompt).toContain("not guaranteed real-time or live intraday quotes");
 			expect(prompt).toContain("Use finance_* and crypto_* tools as the default free local data connectors");
-			expect(prompt).toContain("Treat institutional MCP connectors as explicitly configured premium sources");
+			expect(prompt).toContain("Treat MCP connectors as user-configured sources");
 			expect(prompt).toContain("finance_mcp_list_tools");
 			expect(prompt).toContain("finance_mcp_call_tool");
 			expect(prompt).toContain("/skill:finance-services");

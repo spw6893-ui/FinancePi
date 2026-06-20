@@ -43,11 +43,10 @@ describe("finance services project resources", () => {
 		expect(prompts.find((prompt) => prompt.name === "sector")?.content).toContain("/skill:finance-services");
 	});
 
-	it("keeps a valid finance MCP connector manifest example", () => {
+	it("keeps a generic finance MCP connector manifest example without paid provider endpoints", () => {
 		const manifest = JSON.parse(readFileSync(resolve(repoRoot, ".pi/finance-mcp.example.json"), "utf8"));
-		expect(manifest.mcpServers.factset.url).toContain("factset");
-		expect(manifest.mcpServers["sp-global"].url).toContain("kensho");
-		expect(manifest.mcpServers.aiera.url).toContain("aiera");
-		expect(manifest.mcpServers.box.url).toContain("box.com");
+		expect(manifest.mcpServers["local-finance"].url).toContain("localhost");
+		expect(manifest.mcpServers["custom-provider"].headers.Authorization).toContain("CUSTOM_FINANCE_MCP_TOKEN");
+		expect(Object.keys(manifest.mcpServers).sort()).toEqual(["custom-provider", "local-finance"]);
 	});
 });

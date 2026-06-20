@@ -13,7 +13,7 @@ The migration is not a direct vendored copy. It maps the same architecture into 
 | Agent plugins | Built-in finance/crypto extensions plus `.pi/skills/finance-services` |
 | Skills | `.pi/skills/finance-services/SKILL.md` and references |
 | Commands | `.pi/prompts/*.md` prompt templates |
-| MCP connector catalog | `.pi/finance-mcp.example.json` |
+| MCP connector runtime | `finance_mcp_*` tools plus `.pi/finance-mcp.example.json` template |
 | Market data workflow | Default finance prompt and market-research continuation loop |
 
 ## Included workflows
@@ -46,26 +46,15 @@ They all route into `/skill:finance-services` and then ask the model to run the 
 
 ## MCP connector template
 
-`.pi/finance-mcp.example.json` is a corrected, Pi-local example manifest based on Anthropic's financial-services MCP catalog. To enable runtime calls, copy the needed entries to `.pi/finance-mcp.json`, fill provider URLs/headers/tokens, then use:
+`.pi/finance-mcp.example.json` is a Pi-local template for user-provided free, self-hosted, or explicitly licensed MCP servers. Paid institutional endpoints from Anthropic's public catalog are intentionally not listed because they return 401/403 without commercial access.
+
+To enable runtime calls, copy the needed entries to `.pi/finance-mcp.json`, fill provider URLs/headers/tokens, then use:
 
 - `finance_mcp_servers`
 - `finance_mcp_list_tools`
 - `finance_mcp_call_tool`
 
-Connector categories:
-
-- Daloopa
-- Morningstar
-- S&P Global / Kensho
-- FactSet
-- Moody's
-- MT Newswires
-- Aiera
-- LSEG
-- PitchBook
-- Chronograph
-- Egnyte
-- Box
+The default free agent path does not include paid institutional endpoints.
 
 ## Source hierarchy
 
@@ -74,7 +63,7 @@ Pi finance workflows should prefer:
 1. user-provided files and local `.pi/artifacts/market-data/*.csv`;
 2. the compact free-source stack: SEC EDGAR, Yahoo chart/news, and Binance public market data;
 3. optional FRED macro data when a free key is configured;
-4. configured institutional MCP/data connectors only when premium data is required;
+4. user-configured MCP connectors only when the user has provided a working free, self-hosted, or licensed server;
 5. primary issuer materials for segment/KPI commentary;
 6. web/news search for freshness and catalysts, not primary valuation data.
 
@@ -87,7 +76,7 @@ The default free US equity price path is chart-derived. It should be presented a
 Pi keeps this MCP support project-local and finance-specific. The migrated version puts Anthropic's connector architecture into:
 
 - an explicit manifest template,
-- runtime `finance_mcp_*` tools,
+- runtime `finance_mcp_*` tools for user-configured MCP servers,
 - prompt/source-priority rules,
 - and project skills/prompts that can be used today.
 

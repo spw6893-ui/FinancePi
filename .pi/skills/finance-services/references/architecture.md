@@ -19,7 +19,7 @@ The repository is a financial-services agent system, not a single prompt. It has
    - In Pi, these map to `.pi/prompts/*.md` prompt templates and `/skill:<name>` skill commands.
 
 4. **Connectors**
-   - MCP connectors for institutional data and document systems.
+   - Optional MCP connectors for user-provided free, self-hosted, or explicitly licensed data/document systems.
    - In Pi, connector configuration is represented by `.pi/finance-mcp.example.json`; active runtime configuration lives in `.pi/finance-mcp.json` and is exposed through `finance_mcp_*` tools.
 
 ## Pi mapping
@@ -39,7 +39,7 @@ The model should decide the next research step rather than dump a fixed template
 - inspect the CSV artifact,
 - compute metrics,
 - call a narrower or broader tool,
-- use a configured institutional connector,
+- use a user-configured MCP connector,
 - search for missing source evidence,
 - or answer with explicit limitations.
 

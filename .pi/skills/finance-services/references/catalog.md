@@ -30,8 +30,6 @@ Source reference: https://github.com/anthropics/financial-services
 | wealth-management | client review, report, proposal, financial plan, rebalancing, tax-loss harvesting |
 | fund-admin | GL recon, accruals, NAV tie-out, roll-forward, variance commentary |
 | operations | KYC doc parse and rules evaluation |
-| partner-built/lseg | bond RV, rates, FX carry, options vol, macro monitoring |
-| partner-built/spglobal | tear sheets, earnings previews, funding digest on S&P data |
 
 ## Pi prompt command mapping
 
@@ -53,19 +51,6 @@ Source reference: https://github.com/anthropics/financial-services
 | `/thesis` | `.pi/prompts/thesis.md` |
 | `/catalysts` | `.pi/prompts/catalysts.md` |
 
-## Connector catalog
+## Connector template
 
-See `data-connectors.md` and `.pi/finance-mcp.example.json` for the institutional connector inventory:
-
-- Daloopa
-- Morningstar
-- S&P Global / Kensho
-- FactSet
-- Moody's
-- MT Newswires
-- Aiera
-- LSEG
-- PitchBook
-- Chronograph
-- Egnyte
-- Box
+See `data-connectors.md` and `.pi/finance-mcp.example.json` for the user-configured MCP template. Paid institutional provider endpoints from Anthropic's public catalog are intentionally not listed in Pi defaults.

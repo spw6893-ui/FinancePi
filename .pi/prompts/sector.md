@@ -11,4 +11,4 @@ Scope the ask if needed, then decide which of these are necessary:
 3. comps-analysis
 4. idea-generation
 
-Use Pi finance/crypto tools, local artifacts, configured MCP/institutional sources, and primary filings as appropriate. Do not force a fixed output template.
+Use Pi finance/crypto tools, local artifacts, user-configured MCP sources, and primary filings as appropriate. Do not force a fixed output template.
