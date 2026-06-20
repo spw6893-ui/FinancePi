@@ -577,11 +577,12 @@ cat README.md | pi -p "Summarize this text"
 
 Available built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`
 
-Pi runs as a finance-first research agent by default. It includes `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, and `finance_market_brief`. These tools are database-free and fetch public US equity/ETF data directly.
+Pi runs as a finance-first research agent by default. It includes `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, and `finance_market_brief`. These tools are database-free and fetch public US equity/ETF data directly. Crypto data is kept separate in Binance-backed tools: `crypto_quote`, `crypto_history`, `crypto_derivatives`, and `crypto_context`.
 
 ```bash
 pi "Analyze AAPL using sourced data"
 pi -p "Compare MSFT, AAPL, and NVDA"
+pi -p "Analyze BTC using Binance data"
 ```
 
 ### Resource Options

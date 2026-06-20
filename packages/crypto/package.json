@@ -1,0 +1,28 @@
+{
+	"name": "@earendil-works/pi-crypto",
+	"version": "0.79.8",
+	"description": "Binance-backed crypto market data tools for Pi",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"CHANGELOG.md",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json"
+	},
+	"dependencies": {},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"license": "MIT"
+}

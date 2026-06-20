@@ -7,6 +7,8 @@
 			"@earendil-works/pi-coding-agent/hooks": ["./src/core/hooks/index.ts"],
 			"@earendil-works/pi-tui": ["../tui/src/index.ts"],
 			"@earendil-works/pi-ai": ["../ai/src/index.ts"],
+			"@earendil-works/pi-crypto": ["../crypto/src/index.ts"],
+			"@earendil-works/pi-crypto/*": ["../crypto/src/*"],
 			"@earendil-works/pi-finance": ["../finance/src/index.ts"],
 			"@earendil-works/pi-finance/*": ["../finance/src/*"],
 			"typebox": ["../../node_modules/typebox"]

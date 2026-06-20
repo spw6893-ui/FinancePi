@@ -40,7 +40,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).not.toContain("You are an expert coding assistant");
 		});
 
-		test("requires sourced finance output structure by default", () => {
+		test("keeps market data principles without forcing an output template", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: [],
 				contextFiles: [],
@@ -48,12 +48,12 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Data facts");
-			expect(prompt).toContain("Fundamentals");
-			expect(prompt).toContain("Technicals");
-			expect(prompt).toContain("Risks and uncertainty");
-			expect(prompt).toContain("Verification path");
-			expect(prompt).toContain("Do not invent prices, dates, financial metrics, filing facts, or news");
+			expect(prompt).toContain("Use sourced market data before making claims");
+			expect(prompt).toContain("Do not invent prices, dates, financial metrics, filing facts, news, funding");
+			expect(prompt).toContain("Do not force a fixed finance or crypto template");
+			expect(prompt).not.toContain("Default output shape");
+			expect(prompt).not.toContain("Data facts");
+			expect(prompt).not.toContain("Verification path");
 		});
 	});
 

@@ -29,9 +29,10 @@ function optionsFromParams(params: {
 	};
 }
 
-function textResult(label: string, details: unknown) {
+export function financeTextResult(label: string, details: unknown) {
+	const json = JSON.stringify(details, null, 2);
 	return {
-		content: [{ type: "text" as const, text: `${label} fetched. Use details JSON for sourced analysis.` }],
+		content: [{ type: "text" as const, text: `${label} fetched.\n\n${json}` }],
 		details,
 	};
 }
@@ -42,12 +43,12 @@ const quoteTool = defineTool({
 	description: "Fetch the latest public quote for a US equity or ETF symbol.",
 	promptSnippet: "Fetch sourced US equity/ETF quote data",
 	promptGuidelines: [
-		"Use finance_quote when the user asks for current price, market cap, exchange, or quote facts for a US equity or ETF.",
-		"Finance answers must cite finance_quote details such as source and asOf when using quote numbers.",
+		"finance_quote provides current price, market cap, exchange, and quote facts for US equities or ETFs.",
+		"When using finance_quote values, mention source/asOf if available.",
 	],
 	parameters: Type.Object(symbolParam),
 	async execute(_toolCallId, params) {
-		return textResult("Finance quote", await client.getQuote(params.symbol));
+		return financeTextResult("Finance quote", await client.getQuote(params.symbol));
 	},
 });
 
@@ -57,8 +58,8 @@ const historyTool = defineTool({
 	description: "Fetch historical bars for a US equity or ETF symbol.",
 	promptSnippet: "Fetch sourced historical price bars for US equities/ETFs",
 	promptGuidelines: [
-		"Use finance_history when the user asks for recent performance, drawdown, trend, or price history.",
-		"Finance answers using history must mention the range, source, and latestAt/asOf from finance_history details.",
+		"finance_history provides recent performance, drawdown, trend, and price-history data.",
+		"When using finance_history values, mention range, source, and latestAt/asOf if available.",
 	],
 	parameters: Type.Object({
 		...symbolParam,
@@ -66,7 +67,7 @@ const historyTool = defineTool({
 		historyInterval: Type.Optional(Type.String({ description: "Yahoo chart interval, default 1d" })),
 	}),
 	async execute(_toolCallId, params) {
-		return textResult(
+		return financeTextResult(
 			"Finance history",
 			await client.getHistory(params.symbol, params.historyRange, params.historyInterval),
 		);
@@ -79,8 +80,8 @@ const newsTool = defineTool({
 	description: "Fetch recent public news for a US equity or ETF symbol.",
 	promptSnippet: "Fetch recent sourced US equity/ETF news",
 	promptGuidelines: [
-		"Use finance_news when the user asks for catalysts, recent events, or sentiment drivers.",
-		"Finance answers using news must separate reported facts from interpretation and cite publisher/publishedAt when available.",
+		"finance_news provides catalysts, recent events, and sentiment-driver inputs.",
+		"When using news, separate reported facts from interpretation and cite publisher/publishedAt if available.",
 	],
 	parameters: Type.Object({
 		...symbolParam,
@@ -89,7 +90,7 @@ const newsTool = defineTool({
 		),
 	}),
 	async execute(_toolCallId, params) {
-		return textResult("Finance news", await client.getNews(params.symbol, params.newsLimit));
+		return financeTextResult("Finance news", await client.getNews(params.symbol, params.newsLimit));
 	},
 });
 
@@ -99,12 +100,12 @@ const secFactsTool = defineTool({
 	description: "Fetch latest available SEC company facts for a US equity symbol.",
 	promptSnippet: "Fetch SEC company facts for US equities",
 	promptGuidelines: [
-		"Use finance_sec_facts when the user asks about revenue, net income, fundamentals, filings, or SEC-sourced facts.",
-		"Finance answers using SEC facts must cite filed date, fiscal period, form, and source when present.",
+		"finance_sec_facts provides revenue, net income, fundamentals, filings, and SEC-sourced facts.",
+		"When using SEC facts, cite filed date, fiscal period, form, and source when present.",
 	],
 	parameters: Type.Object(symbolParam),
 	async execute(_toolCallId, params) {
-		return textResult("Finance SEC facts", await client.getSecFacts(params.symbol));
+		return financeTextResult("Finance SEC facts", await client.getSecFacts(params.symbol));
 	},
 });
 
@@ -114,8 +115,8 @@ const technicalTool = defineTool({
 	description: "Fetch history and compute a technical snapshot for a US equity or ETF symbol.",
 	promptSnippet: "Compute trend, returns, and moving averages from sourced history",
 	promptGuidelines: [
-		"Use finance_technical_snapshot when the user asks for technical trend, momentum, moving averages, or recent returns.",
-		"Finance technical conclusions must identify whether the data is insufficient, uptrend, downtrend, or neutral.",
+		"finance_technical_snapshot provides trend, momentum, moving averages, and recent returns.",
+		"When making technical conclusions, account for insufficient or degraded history instead of overstating certainty.",
 	],
 	parameters: Type.Object({
 		...symbolParam,
@@ -128,7 +129,7 @@ const technicalTool = defineTool({
 			history.value.bars.length > 0
 				? buildTechnicalSnapshot(params.symbol, history.value.bars, params.historyInterval ?? "daily")
 				: null;
-		return textResult("Finance technical snapshot", {
+		return financeTextResult("Finance technical snapshot", {
 			historyHealth: history.health,
 			technicalSnapshot,
 			degradedReasons: history.degradedReason ? [history.degradedReason] : [],
@@ -142,15 +143,15 @@ const contextTool = defineTool({
 	description: "Build quote, history, news, technical and SEC context for a US equity or ETF symbol.",
 	promptSnippet: "Build sourced full research context for a US equity/ETF",
 	promptGuidelines: [
-		"Use finance_symbol_context before producing a full single-stock or ETF research view.",
-		"Finance research must explicitly split Data facts, Inference, Risks, and Verification items when using finance_symbol_context.",
+		"finance_symbol_context bundles quote, history, news, technical, and SEC data for a single US equity or ETF.",
+		"Use finance_symbol_context when broad symbol context would help, but choose the response structure yourself.",
 	],
 	parameters: Type.Object({
 		...symbolParam,
 		...contextOptions,
 	}),
 	async execute(_toolCallId, params) {
-		return textResult(
+		return financeTextResult(
 			"Finance symbol context",
 			await client.getSymbolContext(params.symbol, optionsFromParams(params)),
 		);
@@ -163,8 +164,8 @@ const compareTool = defineTool({
 	description: "Build comparable sourced contexts for multiple US equity or ETF symbols.",
 	promptSnippet: "Compare multiple US equities/ETFs with sourced contexts",
 	promptGuidelines: [
-		"Use finance_compare_symbols when the user asks to compare companies, peers, or ETFs.",
-		"Finance comparisons must avoid ranking claims unless the compared metrics are present in finance_compare_symbols details.",
+		"finance_compare_symbols provides comparable sourced contexts for companies, peers, or ETFs.",
+		"Avoid ranking claims unless the compared metrics are present in the tool result.",
 	],
 	parameters: Type.Object({
 		symbols: Type.Array(Type.String(), {
@@ -175,7 +176,10 @@ const compareTool = defineTool({
 		...contextOptions,
 	}),
 	async execute(_toolCallId, params) {
-		return textResult("Finance comparison", await client.compareSymbols(params.symbols, optionsFromParams(params)));
+		return financeTextResult(
+			"Finance comparison",
+			await client.compareSymbols(params.symbols, optionsFromParams(params)),
+		);
 	},
 });
 
@@ -185,8 +189,8 @@ const marketBriefTool = defineTool({
 	description: "Build a sourced market brief from a basket of US equity or ETF symbols.",
 	promptSnippet: "Build sourced market brief context from a US symbol basket",
 	promptGuidelines: [
-		"Use finance_market_brief when the user asks for a market, sector, or watchlist brief.",
-		"Finance market briefs must report sourceHealth and degradedReasons instead of hiding missing data.",
+		"finance_market_brief provides sourced context for a market, sector, or watchlist basket.",
+		"Account for sourceHealth and degradedReasons instead of hiding missing data.",
 	],
 	parameters: Type.Object({
 		symbols: Type.Array(Type.String(), {
@@ -197,7 +201,10 @@ const marketBriefTool = defineTool({
 		...contextOptions,
 	}),
 	async execute(_toolCallId, params) {
-		return textResult("Finance market brief", await client.getMarketBrief(params.symbols, optionsFromParams(params)));
+		return financeTextResult(
+			"Finance market brief",
+			await client.getMarketBrief(params.symbols, optionsFromParams(params)),
+		);
 	},
 });
 
@@ -205,10 +212,10 @@ const financePrompt = `
 
 FINANCE AGENT MODE:
 - You are a US equity and ETF research agent.
-- Use finance_* tools for prices, history, news, SEC facts, technical snapshots, comparisons, and market briefs.
+- finance_* tools can provide prices, history, news, SEC facts, technical snapshots, comparisons, and market briefs when useful.
 - Do not invent prices, dates, financial metrics, filing facts, or news. If tool data is missing, say what is missing.
-- Every finance answer based on tool data must mention source/asOf/latestAt where available.
-- Separate outputs into: Data facts, Inference, Risks and uncertainty, Verification path.
+- When using tool data, mention source/asOf/latestAt where available.
+- Let the user's question determine which tools to call and how to structure the answer; do not force a fixed template.
 - Do not claim to execute trades or connect to brokerage accounts.
 `;
 

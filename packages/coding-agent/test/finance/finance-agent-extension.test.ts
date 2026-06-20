@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-
 import financeAgentExtension from "../../examples/extensions/finance-agent.ts";
 import { parseArgs } from "../../src/cli/args.ts";
 import { getCliExtensionFactories } from "../../src/cli/builtin-extensions.ts";
+import cryptoAgentExtension from "../../src/core/crypto-agent-extension.ts";
 import { createTestExtensionsResult } from "../utilities.ts";
 
 describe("finance agent extension", () => {
@@ -22,10 +22,12 @@ describe("finance agent extension", () => {
 		expect(getCliExtensionFactories(parseArgs([]), [existingFactory])).toEqual([
 			existingFactory,
 			financeAgentExtension,
+			cryptoAgentExtension,
 		]);
 		expect(getCliExtensionFactories(parseArgs(["--finance"]), [existingFactory])).toEqual([
 			existingFactory,
 			financeAgentExtension,
+			cryptoAgentExtension,
 		]);
 	});
 });

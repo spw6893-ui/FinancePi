@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import * as _bundledPiAgentCore from "@earendil-works/pi-agent-core";
 import * as _bundledPiAi from "@earendil-works/pi-ai";
 import * as _bundledPiAiOauth from "@earendil-works/pi-ai/oauth";
+import * as _bundledPiCrypto from "@earendil-works/pi-crypto";
 import * as _bundledPiFinance from "@earendil-works/pi-finance";
 import type { KeyId } from "@earendil-works/pi-tui";
 import * as _bundledPiTui from "@earendil-works/pi-tui";
@@ -53,12 +54,14 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@earendil-works/pi-tui": _bundledPiTui,
 	"@earendil-works/pi-ai": _bundledPiAi,
 	"@earendil-works/pi-ai/oauth": _bundledPiAiOauth,
+	"@earendil-works/pi-crypto": _bundledPiCrypto,
 	"@earendil-works/pi-finance": _bundledPiFinance,
 	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAi,
 	"@mariozechner/pi-ai/oauth": _bundledPiAiOauth,
+	"@mariozechner/pi-crypto": _bundledPiCrypto,
 	"@mariozechner/pi-finance": _bundledPiFinance,
 	"@mariozechner/pi-coding-agent": _bundledPiCodingAgent,
 };
@@ -95,6 +98,7 @@ function getAliases(): Record<string, string> {
 	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui");
 	const piAiEntry = resolveWorkspaceOrImport("ai/dist/index.js", "@earendil-works/pi-ai");
 	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
+	const piCryptoEntry = resolveWorkspaceOrImport("crypto/dist/index.js", "@earendil-works/pi-crypto");
 	const piFinanceEntry = resolveWorkspaceOrImport("finance/dist/index.js", "@earendil-works/pi-finance");
 
 	_aliases = {
@@ -103,12 +107,14 @@ function getAliases(): Record<string, string> {
 		"@earendil-works/pi-tui": piTuiEntry,
 		"@earendil-works/pi-ai": piAiEntry,
 		"@earendil-works/pi-ai/oauth": piAiOauthEntry,
+		"@earendil-works/pi-crypto": piCryptoEntry,
 		"@earendil-works/pi-finance": piFinanceEntry,
 		"@mariozechner/pi-coding-agent": piCodingAgentEntry,
 		"@mariozechner/pi-agent-core": piAgentCoreEntry,
 		"@mariozechner/pi-tui": piTuiEntry,
 		"@mariozechner/pi-ai": piAiEntry,
 		"@mariozechner/pi-ai/oauth": piAiOauthEntry,
+		"@mariozechner/pi-crypto": piCryptoEntry,
 		"@mariozechner/pi-finance": piFinanceEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,

@@ -11,6 +11,7 @@
 			"dependencies": {
 				"@earendil-works/pi-agent-core": "^0.79.8",
 				"@earendil-works/pi-ai": "^0.79.8",
+				"@earendil-works/pi-crypto": "^0.79.8",
 				"@earendil-works/pi-finance": "^0.79.8",
 				"@earendil-works/pi-tui": "^0.79.8",
 				"@silvia-odwyer/photon-node": "0.3.4",
@@ -508,6 +509,15 @@
 			"bin": {
 				"pi-ai": "./dist/cli.js"
 			},
+			"engines": {
+				"node": ">=22.19.0"
+			}
+		},
+		"node_modules/@earendil-works/pi-crypto": {
+			"version": "0.79.8",
+			"resolved": "https://registry.npmjs.org/@earendil-works/pi-crypto/-/pi-crypto-0.79.8.tgz",
+			"license": "MIT",
+			"dependencies": {},
 			"engines": {
 				"node": ">=22.19.0"
 			}
