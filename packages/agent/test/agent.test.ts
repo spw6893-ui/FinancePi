@@ -586,6 +586,54 @@ describe("Agent", () => {
 		expect(agent.state.messages[agent.state.messages.length - 1].role).toBe("assistant");
 	});
 
+	it("passes completed turn context to prepareNextTurn", async () => {
+		const echoTool: AgentTool = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo back",
+			parameters: Type.Object({ value: Type.String() }),
+			execute: async (_toolCallId, params) => ({
+				content: [{ type: "text", text: `echoed ${(params as { value: string }).value}` }],
+				details: { value: (params as { value: string }).value },
+			}),
+		};
+		let callCount = 0;
+		const observedToolResultCounts: number[] = [];
+		const observedToolNames: string[] = [];
+		const agent = new Agent({
+			initialState: { tools: [echoTool] },
+			streamFn: () => {
+				const stream = new MockAssistantStream();
+				callCount++;
+				queueMicrotask(() => {
+					if (callCount === 1) {
+						stream.push({
+							type: "done",
+							reason: "toolUse",
+							message: createAssistantToolUseMessage([
+								{ type: "toolCall", id: "tool-1", name: "echo", arguments: { value: "NVDA" } },
+							]),
+						});
+					} else {
+						stream.push({ type: "done", reason: "stop", message: createAssistantMessage("done") });
+					}
+				});
+				return stream;
+			},
+			prepareNextTurn: ((context: { toolResults?: Array<{ toolName: string }> }) => {
+				observedToolResultCounts.push(context.toolResults?.length ?? 0);
+				const toolName = context.toolResults?.[0]?.toolName;
+				if (toolName) observedToolNames.push(toolName);
+				return undefined;
+			}) as never,
+		});
+
+		await agent.prompt("use echo");
+
+		expect(observedToolResultCounts).toContain(1);
+		expect(observedToolNames).toContain("echo");
+	});
+
 	it("continue() should keep one-at-a-time steering semantics from assistant tail", async () => {
 		let responseCount = 0;
 		const agent = new Agent({

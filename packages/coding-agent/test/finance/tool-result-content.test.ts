@@ -24,7 +24,7 @@ describe("finance tool result content", () => {
 
 			expect(text).toContain("quote: symbol=NVDA");
 			expect(text).toContain("price=123.45");
-			expect(text).toContain("health: source=test_source");
+			expect(text).toContain("summary: source=test_source");
 			expect(text).toContain(".pi/artifacts/market-data/");
 			expect(text).toContain("(csv, rows=1)");
 			expect(text).not.toContain('"value"');
@@ -110,12 +110,14 @@ describe("finance tool result content", () => {
 			const text = result.content[0]?.text ?? "";
 
 			expect(text).toContain(".pi/artifacts/market-data/");
-			expect(text).toContain("quote: price=123.45");
+			expect(text).toContain("coverage: quote=yes");
 			expect(text).toContain("historyBars=2");
 			expect(text).toContain("newsItems=1");
+			expect(text).toContain("quickTechnical: latestClose=2");
 			expect(text).not.toContain("source_health_csv:");
 			expect(text).not.toContain("bars_csv_last_2:");
 			expect(text).not.toContain("news_csv_top_1:");
+			expect(text).not.toContain("topNews=");
 			expect(text).not.toContain('"sourceHealth"');
 
 			const artifactPath = text.match(/\.pi\/artifacts\/market-data\/\S+\.csv/)?.[0];

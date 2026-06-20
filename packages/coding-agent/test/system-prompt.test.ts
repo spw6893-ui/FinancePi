@@ -49,6 +49,9 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain("Use sourced market data before making claims");
+			expect(prompt).toContain("After a market data tool returns, pause and identify data gaps");
+			expect(prompt).toContain("read it or use code/shell to compute the needed statistics");
+			expect(prompt).toContain("Avoid redundant tool calls");
 			expect(prompt).toContain("Do not invent prices, dates, financial metrics, filing facts, news, funding");
 			expect(prompt).toContain("Do not force a fixed finance or crypto template");
 			expect(prompt).not.toContain("Default output shape");

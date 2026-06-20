@@ -18,9 +18,11 @@ import { basename, dirname } from "node:path";
 import type {
 	Agent,
 	AgentEvent,
+	AgentLoopTurnUpdate,
 	AgentMessage,
 	AgentState,
 	AgentTool,
+	PrepareNextTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ImageContent, Message, Model, TextContent } from "@earendil-works/pi-ai";
@@ -317,6 +319,7 @@ export class AgentSession {
 	private _extensionShutdownHandler?: ShutdownHandler;
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
+	private _marketResearchContinuationIds = new Set<string>();
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -351,6 +354,7 @@ export class AgentSession {
 		// (session persistence, extensions, auto-compaction, retry logic)
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		this._installAgentToolHooks();
+		this._installMarketResearchLoop();
 
 		this._buildRuntime({
 			activeToolNames: this._initialActiveToolNames,
@@ -459,6 +463,83 @@ export class AgentSession {
 				isError: hookResult.isError ?? isError,
 			};
 		};
+	}
+
+	private _installMarketResearchLoop(): void {
+		const previousPrepareNextTurn = this.agent.prepareNextTurn;
+		this.agent.prepareNextTurn = async (context, signal) => {
+			const priorUpdate = await previousPrepareNextTurn?.(context, signal);
+			const currentContext = priorUpdate?.context ?? context.context;
+			const continuation = this._buildMarketResearchContinuation(context);
+			if (!continuation) {
+				return priorUpdate;
+			}
+			return {
+				...priorUpdate,
+				context: {
+					...currentContext,
+					messages: [...currentContext.messages, continuation],
+				},
+			} satisfies AgentLoopTurnUpdate;
+		};
+	}
+
+	private _buildMarketResearchContinuation(context: PrepareNextTurnContext): AgentMessage | undefined {
+		const marketResults = context.toolResults.filter((result) => this._isMarketToolName(result.toolName));
+		if (marketResults.length === 0) return undefined;
+
+		const signature = marketResults.map((result) => result.toolCallId).join("|");
+		if (!signature || this._marketResearchContinuationIds.has(signature)) return undefined;
+		this._marketResearchContinuationIds.add(signature);
+
+		const summaries = marketResults.map((result) => this._summarizeMarketToolResult(result)).join("\n\n");
+		return {
+			role: "user",
+			content: [
+				{
+					type: "text",
+					text: [
+						"Market research continuation:",
+						"Do not answer yet only because a market tool returned. First decide the next best research step.",
+						"- Inspect any returned artifact path with read/bash/code if quantitative analysis matters.",
+						"- Identify missing, stale, or degraded facts from the tool result.",
+						"- If key facts are missing/degraded, use another available data tool or web/network search when available.",
+						"- Avoid redundant market calls when the existing context already covers the question.",
+						"- Finalize only when evidence is sufficient, or clearly state remaining data gaps.",
+						"",
+						summaries,
+					].join("\n"),
+				},
+			],
+			timestamp: Date.now(),
+		};
+	}
+
+	private _isMarketToolName(toolName: string): boolean {
+		return toolName.startsWith("finance_") || toolName.startsWith("crypto_");
+	}
+
+	private _summarizeMarketToolResult(result: {
+		toolName: string;
+		content: (TextContent | ImageContent)[];
+		isError: boolean;
+	}): string {
+		const text = result.content
+			.filter((part): part is TextContent => part.type === "text")
+			.map((part) => part.text)
+			.join("\n");
+		const artifactPaths = Array.from(text.matchAll(/\.pi\/artifacts\/market-data\/\S+?\.csv/g)).map(
+			(match) => match[0],
+		);
+		const degraded = Array.from(text.matchAll(/(?:degraded|degradedReason|degradedReasons)=([^\n,]+)/g)).map(
+			(match) => match[1].trim(),
+		);
+		return [
+			`tool=${result.toolName}, isError=${result.isError}`,
+			artifactPaths.length > 0 ? `artifacts=${artifactPaths.join(" | ")}` : "artifacts=none",
+			degraded.length > 0 ? `degraded=${degraded.join(" | ")}` : "degraded=none",
+			`toolTextPreview=${text.slice(0, 800)}`,
+		].join("\n");
 	}
 
 	// =========================================================================

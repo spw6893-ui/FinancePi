@@ -91,11 +91,10 @@ function isCryptoContext(value: unknown): value is CryptoContext {
 
 function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | null>, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact Binance data summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}${result.degradedReason ? `, degraded=${result.degradedReason}` : ""}`,
 		result.value
-			? `quote: symbol=${result.value.binanceSymbol}, lastPrice=${formatValue(result.value.lastPrice)}, changePercent24h=${formatValue(result.value.changePercent24h)}, baseVolume24h=${formatValue(result.value.baseVolume24h)}, quoteVolume24h=${formatValue(result.value.quoteVolume24h)}, asOf=${result.value.asOf}, source=${result.value.source}`
+			? `quote: symbol=${result.value.binanceSymbol}, lastPrice=${formatValue(result.value.lastPrice)}, changePercent24h=${formatValue(result.value.changePercent24h)}, asOf=${result.value.asOf}, source=${result.value.source}`
 			: "quote: unavailable",
 	]
 		.filter(Boolean)
@@ -105,9 +104,8 @@ function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | nul
 function formatHistoryResult(label: string, result: SourceResult<CryptoHistory>, artifact?: MarketArtifact): string {
 	const bars = result.value.bars.slice(-10);
 	return [
-		`${label} fetched. Compact Binance kline summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		`history: symbol=${result.value.binanceSymbol}, interval=${result.value.interval}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, artifactRows=${formatValue(artifact?.rows)}, latestClose=${formatValue(bars.at(-1)?.close)}`,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}, symbol=${result.value.binanceSymbol}, interval=${result.value.interval}, bars=${result.value.bars.length}, latestClose=${formatValue(bars.at(-1)?.close)}`,
 	].join("\n");
 }
 
@@ -117,9 +115,8 @@ function formatDerivativesResult(
 	artifact?: MarketArtifact,
 ): string {
 	return [
-		`${label} fetched. Compact Binance futures summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}${result.degradedReason ? `, degraded=${result.degradedReason}` : ""}`,
 		result.value
 			? `derivatives: symbol=${result.value.binanceSymbol}, fundingRate=${formatValue(result.value.fundingRate)}, fundingTime=${formatValue(result.value.fundingTime)}, openInterest=${formatValue(result.value.openInterest)}, openInterestTime=${formatValue(result.value.openInterestTime)}, source=${result.value.source}`
 			: "derivatives: unavailable",
@@ -130,15 +127,13 @@ function formatDerivativesResult(
 
 function formatCryptoContext(label: string, context: CryptoContext, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact Binance market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-		`asset=${context.asset}, symbol=${context.binanceSymbol}, quoteAsset=${context.quoteAsset}, asOf=${context.asOf}`,
-		formatDegraded(context.degradedReasons),
-		`sourceHealth=${context.sourceHealth.map((health) => `${health.source}:${health.status}${health.degradedReason ? `:${health.degradedReason}` : ""}`).join(" | ")}`,
-		`quote: lastPrice=${formatValue(context.quote?.lastPrice)}, changePercent24h=${formatValue(context.quote?.changePercent24h)}, baseVolume24h=${formatValue(context.quote?.baseVolume24h)}, quoteVolume24h=${formatValue(context.quote?.quoteVolume24h)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: asset=${context.asset}, symbol=${context.binanceSymbol}, asOf=${context.asOf}, degraded=${formatDegradedShort(context.degradedReasons)}`,
+		`coverage: quote=${context.quote ? "yes" : "no"}, historyBars=${context.history.bars.length}, derivatives=${context.derivatives ? "yes" : "no"}`,
+		`quote: lastPrice=${formatValue(context.quote?.lastPrice)}, changePercent24h=${formatValue(context.quote?.changePercent24h)}, asOf=${formatValue(context.quote?.asOf)}`,
 		context.derivatives
 			? `derivatives: fundingRate=${formatValue(context.derivatives.fundingRate)}, fundingTime=${formatValue(context.derivatives.fundingTime)}, openInterest=${formatValue(context.derivatives.openInterest)}, openInterestTime=${formatValue(context.derivatives.openInterestTime)}, source=${context.derivatives.source}`
 			: "derivatives: unavailable",
-		`artifactRows=${formatValue(artifact?.rows)}, historyBars=${context.history.bars.length}`,
 	].join("\n");
 }
 
@@ -239,12 +234,12 @@ function cryptoContextArtifactLines(context: CryptoContext): string[] {
 	];
 }
 
-function formatHealth(health: SourceHealth): string {
-	return `health: source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}, degradedReason=${formatValue(health.degradedReason)}`;
+function formatDegradedShort(reasons: string[]): string {
+	return reasons.length > 0 ? reasons.join("|") : "none";
 }
 
-function formatDegraded(reasons: string[]): string {
-	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+function formatHealthShort(health: SourceHealth): string {
+	return `source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}`;
 }
 
 function formatArtifact(artifact: MarketArtifact | undefined): string {

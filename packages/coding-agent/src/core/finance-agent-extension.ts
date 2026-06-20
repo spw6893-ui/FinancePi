@@ -65,9 +65,8 @@ function formatFinanceDetails(label: string, details: unknown, artifact?: Market
 	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
 		const contexts = details.contexts.slice(0, 10);
 		return [
-			`${label} fetched. Compact market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-			`asOf=${details.asOf}`,
-			formatDegraded(details.degradedReasons),
+			`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+			`summary: asOf=${details.asOf}, symbols=${contexts.map((context) => context.symbol).join(",")}, degraded=${formatDegradedShort(details.degradedReasons)}`,
 			`symbols=${contexts.map((context) => context.symbol).join(",")}`,
 		].join("\n");
 	}
@@ -133,11 +132,10 @@ function isTechnicalDetails(value: unknown): value is {
 
 function formatQuoteResult(label: string, result: SourceResult<Quote | null>, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact market data summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}${result.degradedReason ? `, degraded=${result.degradedReason}` : ""}`,
 		result.value
-			? `quote: symbol=${result.value.symbol}, price=${formatValue(result.value.price)}, currency=${formatValue(result.value.currency)}, exchange=${formatValue(result.value.exchange)}, marketCap=${formatValue(result.value.marketCap)}, asOf=${result.value.asOf}, source=${result.value.source}`
+			? `quote: symbol=${result.value.symbol}, price=${formatValue(result.value.price)}, asOf=${result.value.asOf}, source=${result.value.source}`
 			: "quote: unavailable",
 	]
 		.filter(Boolean)
@@ -147,19 +145,15 @@ function formatQuoteResult(label: string, result: SourceResult<Quote | null>, ar
 function formatHistoryResult(label: string, result: SourceResult<History>, artifact?: MarketArtifact): string {
 	const bars = result.value.bars.slice(-10);
 	return [
-		`${label} fetched. Compact history summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		`history: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, artifactRows=${formatValue(artifact?.rows)}, latestClose=${formatValue(bars.at(-1)?.close)}`,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}, symbol=${result.value.symbol}, bars=${result.value.bars.length}, latestClose=${formatValue(bars.at(-1)?.close)}`,
 	].join("\n");
 }
 
 function formatNewsResult(label: string, result: SourceResult<NewsResult>, artifact?: MarketArtifact): string {
-	const items = result.value.items.slice(0, 8);
 	return [
-		`${label} fetched. Compact news summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		`news: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalItems=${result.value.items.length}, artifactRows=${formatValue(artifact?.rows)}`,
-		`topTitles=${items.map((item) => item.title).join(" | ") || "NA"}`,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}, symbol=${result.value.symbol}, items=${result.value.items.length}, latestAt=${formatValue(result.value.latestAt)}`,
 	].join("\n");
 }
 
@@ -170,9 +164,8 @@ function formatFundamentalsResult(
 ): string {
 	const facts = result.value?.facts;
 	return [
-		`${label} fetched. Compact SEC facts summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(result.health),
-		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}${result.degradedReason ? `, degraded=${result.degradedReason}` : ""}`,
 		result.value
 			? `company: symbol=${result.value.symbol}, companyName=${formatValue(result.value.companyName)}, cik=${formatValue(result.value.cik)}, asOf=${result.value.asOf}, source=${result.value.source}`
 			: "company: unavailable",
@@ -194,31 +187,22 @@ function formatTechnicalDetails(
 ): string {
 	const snapshot = details.technicalSnapshot;
 	return [
-		`${label} fetched. Compact technical summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
-		formatHealth(details.historyHealth),
-		formatDegraded(details.degradedReasons),
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(details.historyHealth)}, degraded=${formatDegradedShort(details.degradedReasons)}`,
 		snapshot
-			? `technical: symbol=${snapshot.symbol}, period=${snapshot.period}, latestClose=${formatValue(snapshot.latestClose)}, return1d=${formatValue(snapshot.return1d)}, return5d=${formatValue(snapshot.return5d)}, return20d=${formatValue(snapshot.return20d)}, sma20=${formatValue(snapshot.sma20)}, sma50=${formatValue(snapshot.sma50)}, trend=${snapshot.trend}, asOf=${formatValue(snapshot.asOf)}, source=${snapshot.source}`
+			? `technical: symbol=${snapshot.symbol}, period=${snapshot.period}, latestClose=${formatValue(snapshot.latestClose)}, trend=${snapshot.trend}, asOf=${formatValue(snapshot.asOf)}, source=${snapshot.source}`
 			: "technical: unavailable",
 	].join("\n");
 }
 
 function formatSymbolContext(label: string, context: SymbolContext, artifact?: MarketArtifact): string {
-	const news = context.news.items.slice(0, 6);
 	return [
-		`${label} fetched. Compact market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
-		`symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}`,
-		formatDegraded(context.degradedReasons),
-		`sourceHealth=${context.sourceHealth.map((health) => `${health.source}:${health.status}${health.degradedReason ? `:${health.degradedReason}` : ""}`).join(" | ")}`,
-		`quote: price=${formatValue(context.quote?.price)}, currency=${formatValue(context.quote?.currency)}, exchange=${formatValue(context.quote?.exchange)}, marketCap=${formatValue(context.quote?.marketCap)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}, degraded=${formatDegradedShort(context.degradedReasons)}`,
+		`coverage: quote=${context.quote ? "yes" : "no"}, historyBars=${context.history.bars.length}, newsItems=${context.news.items.length}, technical=${context.technicalSnapshot ? "yes" : "no"}, fundamentals=${context.fundamentals ? "yes" : "no"}`,
 		context.technicalSnapshot
-			? `technical: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, return1d=${formatValue(context.technicalSnapshot.return1d)}, return5d=${formatValue(context.technicalSnapshot.return5d)}, return20d=${formatValue(context.technicalSnapshot.return20d)}, sma20=${formatValue(context.technicalSnapshot.sma20)}, sma50=${formatValue(context.technicalSnapshot.sma50)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}, source=${context.technicalSnapshot.source}`
-			: "technical: unavailable",
-		context.fundamentals
-			? `fundamentals: companyName=${formatValue(context.fundamentals.companyName)}, revenue=${formatFact(context.fundamentals.facts.revenue)}, netIncome=${formatFact(context.fundamentals.facts.netIncome)}, source=${context.fundamentals.source}, asOf=${context.fundamentals.asOf}`
-			: "fundamentals: unavailable",
-		`artifactRows=${formatValue(artifact?.rows)}, historyBars=${context.history.bars.length}, newsItems=${context.news.items.length}`,
-		`topNews=${news.map((item) => item.title).join(" | ") || "NA"}`,
+			? `quickTechnical: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}`
+			: "quickTechnical: unavailable",
 	].join("\n");
 }
 
@@ -329,12 +313,12 @@ function symbolContextArtifactLines(context: SymbolContext): string[] {
 	];
 }
 
-function formatHealth(health: SourceHealth): string {
-	return `health: source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}, degradedReason=${formatValue(health.degradedReason)}`;
+function formatDegradedShort(reasons: string[]): string {
+	return reasons.length > 0 ? reasons.join("|") : "none";
 }
 
-function formatDegraded(reasons: string[]): string {
-	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+function formatHealthShort(health: SourceHealth): string {
+	return `source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}`;
 }
 
 function formatArtifact(artifact: MarketArtifact | undefined): string {

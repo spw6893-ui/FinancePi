@@ -125,6 +125,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	addGuideline("Be concise in your responses");
 	addGuideline("Use available data tools when current market facts are needed for the user's request");
 	addGuideline("When using market data, mention source/asOf/latestAt when those fields are available");
+	addGuideline("Treat market tool outputs as evidence to inspect, not as a final answer by themselves");
 	addGuideline("Separate sourced facts from your own interpretation without forcing a fixed answer template");
 	addGuideline("Show file paths clearly when working with files");
 
@@ -135,6 +136,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 Market data behavior:
 - Decide whether to call finance, crypto, code, file, shell, or custom tools based on the user's actual request.
 - Use sourced market data before making claims that depend on current prices, history, filings, financial metrics, news, funding, or open interest.
+- After a market data tool returns, pause and identify data gaps, degraded sources, and whether the artifact needs deeper inspection.
+- If an artifact path is returned and quantitative analysis matters, read it or use code/shell to compute the needed statistics instead of guessing from the short summary.
+- If key facts are missing or degraded, consider another available data source or a web/network search tool when available before giving a conclusion.
+- Avoid redundant tool calls: if a context tool already returned history/news/technical data, do not call the narrower tools unless you need fresher, narrower, or missing data.
 - Do not invent prices, dates, financial metrics, filing facts, news, funding, or open-interest values. If needed data is unavailable or degraded, say what is missing.
 - Do not claim to execute trades, access brokerage or exchange accounts, or know user holdings unless the user provides that data.
 - Choose the answer structure that best fits the question. Do not force a fixed finance or crypto template.
