@@ -195,6 +195,11 @@ describe("parseArgs", () => {
 	});
 
 	describe("--extension flag", () => {
+		test("parses --finance flag", () => {
+			const result = parseArgs(["--finance"]);
+			expect(result.finance).toBe(true);
+		});
+
 		test("parses single --extension", () => {
 			const result = parseArgs(["--extension", "./my-extension.ts"]);
 			expect(result.extensions).toEqual(["./my-extension.ts"]);

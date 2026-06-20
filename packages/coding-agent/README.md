@@ -569,12 +569,20 @@ cat README.md | pi -p "Summarize this text"
 
 | Option | Description |
 |--------|-------------|
+| `--finance` | Compatibility flag; built-in US equity/ETF research tools and finance-specific prompt guidance are enabled by default |
 | `--tools <list>`, `-t <list>` | Allowlist specific tool names across built-in, extension, and custom tools |
 | `--exclude-tools <list>`, `-xt <list>` | Disable specific tool names across built-in, extension, and custom tools |
 | `--no-builtin-tools`, `-nbt` | Disable built-in tools by default but keep extension/custom tools enabled |
 | `--no-tools`, `-nt` | Disable all tools by default |
 
 Available built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`
+
+Pi runs as a finance-first research agent by default. It includes `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, and `finance_market_brief`. These tools are database-free and fetch public US equity/ETF data directly.
+
+```bash
+pi "Analyze AAPL using sourced data"
+pi -p "Compare MSFT, AAPL, and NVDA"
+```
 
 ### Resource Options
 

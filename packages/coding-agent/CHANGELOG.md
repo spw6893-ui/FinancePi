@@ -5,6 +5,7 @@
 ### Added
 
 - Added inherited configurable `chat-template` thinking support for OpenAI-compatible providers that use `chat_template_kwargs`, such as DeepSeek models behind vLLM ([#5673](https://github.com/earendil-works/pi/issues/5673)).
+- Changed Pi's default prompt and built-in workflow to finance-first US equity/ETF research with sourced finance tools enabled by default.
 
 ### Fixed
 

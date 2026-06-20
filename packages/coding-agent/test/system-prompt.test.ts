@@ -26,6 +26,37 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 
+	describe("finance-first default", () => {
+		test("uses finance research agent identity instead of coding assistant identity", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: [],
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain("You are an expert finance research agent operating inside pi");
+			expect(prompt).toContain("US equities and ETFs");
+			expect(prompt).not.toContain("You are an expert coding assistant");
+		});
+
+		test("requires sourced finance output structure by default", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: [],
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).toContain("Data facts");
+			expect(prompt).toContain("Fundamentals");
+			expect(prompt).toContain("Technicals");
+			expect(prompt).toContain("Risks and uncertainty");
+			expect(prompt).toContain("Verification path");
+			expect(prompt).toContain("Do not invent prices, dates, financial metrics, filing facts, or news");
+		});
+	});
+
 	describe("default tools", () => {
 		test("includes all default tools when snippets are provided", () => {
 			const prompt = buildSystemPrompt({

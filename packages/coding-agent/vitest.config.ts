@@ -7,6 +7,8 @@ const aiSrcOAuth = fileURLToPath(new URL("../ai/src/oauth.ts", import.meta.url))
 const aiOpenRouterImages = fileURLToPath(new URL("../ai/src/providers/images/openrouter.ts", import.meta.url));
 const agentSrcIndex = fileURLToPath(new URL("../agent/src/index.ts", import.meta.url));
 const agentSrcBase = fileURLToPath(new URL("../agent/src/base.ts", import.meta.url));
+const codingAgentSrcIndex = fileURLToPath(new URL("./src/index.ts", import.meta.url));
+const financeSrcIndex = fileURLToPath(new URL("../finance/src/index.ts", import.meta.url));
 const tuiSrcIndex = fileURLToPath(new URL("../tui/src/index.ts", import.meta.url));
 
 export default defineConfig({
@@ -28,6 +30,8 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-ai\/openrouter-images$/, replacement: aiOpenRouterImages },
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-agent-core\/base$/, replacement: agentSrcBase },
+			{ find: /^@earendil-works\/pi-coding-agent$/, replacement: codingAgentSrcIndex },
+			{ find: /^@earendil-works\/pi-finance$/, replacement: financeSrcIndex },
 			{ find: /^@earendil-works\/pi-tui$/, replacement: tuiSrcIndex },
 			{ find: /^@mariozechner\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@mariozechner\/pi-ai\/base$/, replacement: aiSrcBase },
@@ -35,6 +39,8 @@ export default defineConfig({
 			{ find: /^@mariozechner\/pi-ai\/openrouter-images$/, replacement: aiOpenRouterImages },
 			{ find: /^@mariozechner\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@mariozechner\/pi-agent-core\/base$/, replacement: agentSrcBase },
+			{ find: /^@mariozechner\/pi-coding-agent$/, replacement: codingAgentSrcIndex },
+			{ find: /^@mariozechner\/pi-finance$/, replacement: financeSrcIndex },
 			{ find: /^@mariozechner\/pi-tui$/, replacement: tuiSrcIndex },
 		],
 	},
