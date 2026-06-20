@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
 	CompareSymbolsResult,
 	Fundamentals,
@@ -12,7 +14,7 @@ import type {
 } from "@earendil-works/pi-finance";
 import { buildTechnicalSnapshot, FinanceClient } from "@earendil-works/pi-finance";
 import { Type } from "typebox";
-import { defineTool, type ExtensionAPI } from "./extensions/types.ts";
+import { defineTool, type ExtensionAPI, type ExtensionContext } from "./extensions/types.ts";
 
 const client = new FinanceClient();
 
@@ -40,43 +42,36 @@ function optionsFromParams(params: {
 	};
 }
 
-export function financeTextResult(label: string, details: unknown) {
+export async function financeTextResult(label: string, details: unknown, ctx?: ExtensionContext) {
+	const artifact = ctx ? await writeFinanceArtifact(label, details, ctx.cwd) : undefined;
 	return {
-		content: [{ type: "text" as const, text: formatFinanceDetails(label, details) }],
+		content: [{ type: "text" as const, text: formatFinanceDetails(label, details, artifact) }],
 		details,
 	};
 }
 
-function formatFinanceDetails(label: string, details: unknown): string {
-	if (isSourceResult<Quote | null>(details)) return formatQuoteResult(label, details);
-	if (isSourceResult<History>(details)) return formatHistoryResult(label, details);
-	if (isSourceResult<NewsResult>(details)) return formatNewsResult(label, details);
-	if (isSourceResult<Fundamentals | null>(details)) return formatFundamentalsResult(label, details);
-	if (isTechnicalDetails(details)) return formatTechnicalDetails(label, details);
-	if (isSymbolContext(details)) return formatSymbolContext(label, details);
+interface MarketArtifact {
+	relativePath: string;
+	rows: number;
+}
+
+function formatFinanceDetails(label: string, details: unknown, artifact?: MarketArtifact): string {
+	if (isHistorySourceResult(details)) return formatHistoryResult(label, details, artifact);
+	if (isNewsSourceResult(details)) return formatNewsResult(label, details, artifact);
+	if (isFundamentalsSourceResult(details)) return formatFundamentalsResult(label, details, artifact);
+	if (isQuoteSourceResult(details)) return formatQuoteResult(label, details, artifact);
+	if (isTechnicalDetails(details)) return formatTechnicalDetails(label, details, artifact);
+	if (isSymbolContext(details)) return formatSymbolContext(label, details, artifact);
 	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
 		const contexts = details.contexts.slice(0, 10);
 		return [
-			`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+			`${label} fetched. Compact market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 			`asOf=${details.asOf}`,
 			formatDegraded(details.degradedReasons),
-			"",
-			"symbols_csv:",
-			"symbol,price,priceSource,latestClose,trend,newsCount,degradedReasons",
-			...contexts.map((context) =>
-				csvRow([
-					context.symbol,
-					context.quote?.price,
-					context.quote?.source,
-					context.technicalSnapshot?.latestClose,
-					context.technicalSnapshot?.trend,
-					context.news.items.length,
-					context.degradedReasons.join("|"),
-				]),
-			),
+			`symbols=${contexts.map((context) => context.symbol).join(",")}`,
 		].join("\n");
 	}
-	return `${label} fetched. Full raw result is preserved in tool details.`;
+	return `${label} fetched. Full raw result is preserved in tool details. CSV artifact: ${formatArtifact(artifact)}.`;
 }
 
 type SourceResult<T> = {
@@ -87,6 +82,27 @@ type SourceResult<T> = {
 
 function isSourceResult<T>(value: unknown): value is SourceResult<T> {
 	return Boolean(value && typeof value === "object" && "value" in value && "health" in value);
+}
+
+function isHistorySourceResult(value: unknown): value is SourceResult<History> {
+	return isSourceResult<History>(value) && isRecord(value.value) && Array.isArray(value.value.bars);
+}
+
+function isNewsSourceResult(value: unknown): value is SourceResult<NewsResult> {
+	return isSourceResult<NewsResult>(value) && isRecord(value.value) && Array.isArray(value.value.items);
+}
+
+function isFundamentalsSourceResult(value: unknown): value is SourceResult<Fundamentals | null> {
+	return (
+		isSourceResult<Fundamentals | null>(value) &&
+		(value.value === null || (isRecord(value.value) && "facts" in value.value))
+	);
+}
+
+function isQuoteSourceResult(value: unknown): value is SourceResult<Quote | null> {
+	return (
+		isSourceResult<Quote | null>(value) && (value.value === null || (isRecord(value.value) && "price" in value.value))
+	);
 }
 
 function isSymbolContext(value: unknown): value is SymbolContext {
@@ -115,9 +131,9 @@ function isTechnicalDetails(value: unknown): value is {
 	return Boolean(value && typeof value === "object" && "technicalSnapshot" in value && "historyHealth" in value);
 }
 
-function formatQuoteResult(label: string, result: SourceResult<Quote | null>): string {
+function formatQuoteResult(label: string, result: SourceResult<Quote | null>, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact market data summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
 		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
 		result.value
@@ -128,36 +144,33 @@ function formatQuoteResult(label: string, result: SourceResult<Quote | null>): s
 		.join("\n");
 }
 
-function formatHistoryResult(label: string, result: SourceResult<History>): string {
+function formatHistoryResult(label: string, result: SourceResult<History>, artifact?: MarketArtifact): string {
 	const bars = result.value.bars.slice(-10);
 	return [
-		`${label} fetched. Compact history summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact history summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
-		`history: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, shownBars=${bars.length}`,
-		"",
-		"bars_csv:",
-		"time,open,high,low,close,volume",
-		...bars.map((bar) => csvRow([bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume])),
+		`history: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, artifactRows=${formatValue(artifact?.rows)}, latestClose=${formatValue(bars.at(-1)?.close)}`,
 	].join("\n");
 }
 
-function formatNewsResult(label: string, result: SourceResult<NewsResult>): string {
+function formatNewsResult(label: string, result: SourceResult<NewsResult>, artifact?: MarketArtifact): string {
 	const items = result.value.items.slice(0, 8);
 	return [
-		`${label} fetched. Compact news summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact news summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
-		`news: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalItems=${result.value.items.length}, shownItems=${items.length}`,
-		"",
-		"news_csv:",
-		"publishedAt,publisher,title",
-		...items.map((item) => csvRow([item.publishedAt, item.publisher, item.title])),
+		`news: symbol=${result.value.symbol}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalItems=${result.value.items.length}, artifactRows=${formatValue(artifact?.rows)}`,
+		`topTitles=${items.map((item) => item.title).join(" | ") || "NA"}`,
 	].join("\n");
 }
 
-function formatFundamentalsResult(label: string, result: SourceResult<Fundamentals | null>): string {
+function formatFundamentalsResult(
+	label: string,
+	result: SourceResult<Fundamentals | null>,
+	artifact?: MarketArtifact,
+): string {
 	const facts = result.value?.facts;
 	return [
-		`${label} fetched. Compact SEC facts summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact SEC facts summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
 		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
 		result.value
@@ -177,10 +190,11 @@ function formatTechnicalDetails(
 		technicalSnapshot: TechnicalSnapshot | null;
 		degradedReasons: string[];
 	},
+	artifact?: MarketArtifact,
 ): string {
 	const snapshot = details.technicalSnapshot;
 	return [
-		`${label} fetched. Compact technical summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact technical summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(details.historyHealth),
 		formatDegraded(details.degradedReasons),
 		snapshot
@@ -189,20 +203,13 @@ function formatTechnicalDetails(
 	].join("\n");
 }
 
-function formatSymbolContext(label: string, context: SymbolContext): string {
-	const bars = context.history.bars.slice(-8);
+function formatSymbolContext(label: string, context: SymbolContext, artifact?: MarketArtifact): string {
 	const news = context.news.items.slice(0, 6);
 	return [
-		`${label} fetched. Compact market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 		`symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}`,
 		formatDegraded(context.degradedReasons),
-		"",
-		"source_health_csv:",
-		"source,status,latestAt,degradedReason",
-		...context.sourceHealth.map((health) =>
-			csvRow([health.source, health.status, health.latestAt, health.degradedReason]),
-		),
-		"",
+		`sourceHealth=${context.sourceHealth.map((health) => `${health.source}:${health.status}${health.degradedReason ? `:${health.degradedReason}` : ""}`).join(" | ")}`,
 		`quote: price=${formatValue(context.quote?.price)}, currency=${formatValue(context.quote?.currency)}, exchange=${formatValue(context.quote?.exchange)}, marketCap=${formatValue(context.quote?.marketCap)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
 		context.technicalSnapshot
 			? `technical: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, return1d=${formatValue(context.technicalSnapshot.return1d)}, return5d=${formatValue(context.technicalSnapshot.return5d)}, return20d=${formatValue(context.technicalSnapshot.return20d)}, sma20=${formatValue(context.technicalSnapshot.sma20)}, sma50=${formatValue(context.technicalSnapshot.sma50)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}, source=${context.technicalSnapshot.source}`
@@ -210,15 +217,116 @@ function formatSymbolContext(label: string, context: SymbolContext): string {
 		context.fundamentals
 			? `fundamentals: companyName=${formatValue(context.fundamentals.companyName)}, revenue=${formatFact(context.fundamentals.facts.revenue)}, netIncome=${formatFact(context.fundamentals.facts.netIncome)}, source=${context.fundamentals.source}, asOf=${context.fundamentals.asOf}`
 			: "fundamentals: unavailable",
-		"",
-		`bars_csv_last_${bars.length}:`,
-		"time,open,high,low,close,volume",
-		...bars.map((bar) => csvRow([bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume])),
-		"",
-		`news_csv_top_${news.length}:`,
-		"publishedAt,publisher,title",
-		...news.map((item) => csvRow([item.publishedAt, item.publisher, item.title])),
+		`artifactRows=${formatValue(artifact?.rows)}, historyBars=${context.history.bars.length}, newsItems=${context.news.items.length}`,
+		`topNews=${news.map((item) => item.title).join(" | ") || "NA"}`,
 	].join("\n");
+}
+
+async function writeFinanceArtifact(label: string, details: unknown, cwd: string): Promise<MarketArtifact | undefined> {
+	const lines = financeArtifactLines(details);
+	if (!lines) return undefined;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const relativePath = `.pi/artifacts/market-data/${stamp}-${slugify(label)}.csv`;
+	const dir = join(cwd, ".pi", "artifacts", "market-data");
+	await mkdir(dir, { recursive: true });
+	await writeFile(join(cwd, relativePath), lines.join("\n"), "utf8");
+	return { relativePath, rows: Math.max(0, lines.length - 1) };
+}
+
+function financeArtifactLines(details: unknown): string[] | undefined {
+	if (isHistorySourceResult(details)) {
+		return [
+			"time,open,high,low,close,volume",
+			...details.value.bars.map((bar) => csvRow([bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume])),
+		];
+	}
+	if (isNewsSourceResult(details)) {
+		return [
+			"publishedAt,publisher,title,url",
+			...details.value.items.map((item) => csvRow([item.publishedAt, item.publisher, item.title, item.url])),
+		];
+	}
+	if (isQuoteSourceResult(details)) {
+		const quote = details.value;
+		return [
+			"symbol,price,currency,exchange,marketCap,asOf,source,status,degradedReason",
+			csvRow([
+				quote?.symbol,
+				quote?.price,
+				quote?.currency,
+				quote?.exchange,
+				quote?.marketCap,
+				quote?.asOf,
+				quote?.source,
+				details.health.status,
+				details.degradedReason,
+			]),
+		];
+	}
+	if (isSymbolContext(details)) return symbolContextArtifactLines(details);
+	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
+		return [
+			"symbol,price,priceSource,latestClose,trend,newsCount,degradedReasons",
+			...details.contexts.map((context) =>
+				csvRow([
+					context.symbol,
+					context.quote?.price,
+					context.quote?.source,
+					context.technicalSnapshot?.latestClose,
+					context.technicalSnapshot?.trend,
+					context.news.items.length,
+					context.degradedReasons.join("|"),
+				]),
+			),
+		];
+	}
+	return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === "object");
+}
+
+function symbolContextArtifactLines(context: SymbolContext): string[] {
+	return [
+		"section,time,open,high,low,close,volume,publishedAt,publisher,title,source,status,latestAt,degradedReason",
+		...context.sourceHealth.map((health) =>
+			csvRow([
+				"source_health",
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				health.source,
+				health.status,
+				health.latestAt,
+				health.degradedReason,
+			]),
+		),
+		...context.history.bars.map((bar) =>
+			csvRow(["bar", bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume]),
+		),
+		...context.news.items.map((item) =>
+			csvRow([
+				"news",
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				item.publishedAt,
+				item.publisher,
+				item.title,
+				item.source,
+			]),
+		),
+	];
 }
 
 function formatHealth(health: SourceHealth): string {
@@ -227,6 +335,10 @@ function formatHealth(health: SourceHealth): string {
 
 function formatDegraded(reasons: string[]): string {
 	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+}
+
+function formatArtifact(artifact: MarketArtifact | undefined): string {
+	return artifact ? `${artifact.relativePath} (csv, rows=${artifact.rows})` : "not written";
 }
 
 function formatFact(fact: Fundamentals["facts"]["revenue"]): string {
@@ -250,6 +362,15 @@ function csvCell(value: unknown): string {
 	return `"${text.replaceAll('"', '""')}"`;
 }
 
+function slugify(value: string): string {
+	return (
+		value
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "") || "market-data"
+	);
+}
+
 const quoteTool = defineTool({
 	name: "finance_quote",
 	label: "Finance Quote",
@@ -260,8 +381,8 @@ const quoteTool = defineTool({
 		"When using finance_quote values, mention source/asOf if available.",
 	],
 	parameters: Type.Object(symbolParam),
-	async execute(_toolCallId, params) {
-		return financeTextResult("Finance quote", await client.getQuote(params.symbol));
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return financeTextResult("Finance quote", await client.getQuote(params.symbol), ctx);
 	},
 });
 
@@ -279,10 +400,11 @@ const historyTool = defineTool({
 		historyRange: Type.Optional(Type.String({ description: "Yahoo chart range, default 6mo" })),
 		historyInterval: Type.Optional(Type.String({ description: "Yahoo chart interval, default 1d" })),
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return financeTextResult(
 			"Finance history",
 			await client.getHistory(params.symbol, params.historyRange, params.historyInterval),
+			ctx,
 		);
 	},
 });
@@ -302,8 +424,8 @@ const newsTool = defineTool({
 			Type.Number({ description: "Maximum news items to fetch, default 10", minimum: 1, maximum: 50 }),
 		),
 	}),
-	async execute(_toolCallId, params) {
-		return financeTextResult("Finance news", await client.getNews(params.symbol, params.newsLimit));
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return financeTextResult("Finance news", await client.getNews(params.symbol, params.newsLimit), ctx);
 	},
 });
 
@@ -317,8 +439,8 @@ const secFactsTool = defineTool({
 		"When using SEC facts, cite filed date, fiscal period, form, and source when present.",
 	],
 	parameters: Type.Object(symbolParam),
-	async execute(_toolCallId, params) {
-		return financeTextResult("Finance SEC facts", await client.getSecFacts(params.symbol));
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return financeTextResult("Finance SEC facts", await client.getSecFacts(params.symbol), ctx);
 	},
 });
 
@@ -336,17 +458,21 @@ const technicalTool = defineTool({
 		historyRange: Type.Optional(Type.String({ description: "Yahoo chart range, default 6mo" })),
 		historyInterval: Type.Optional(Type.String({ description: "Yahoo chart interval, default 1d" })),
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		const history = await client.getHistory(params.symbol, params.historyRange, params.historyInterval);
 		const technicalSnapshot =
 			history.value.bars.length > 0
 				? buildTechnicalSnapshot(params.symbol, history.value.bars, params.historyInterval ?? "daily")
 				: null;
-		return financeTextResult("Finance technical snapshot", {
-			historyHealth: history.health,
-			technicalSnapshot,
-			degradedReasons: history.degradedReason ? [history.degradedReason] : [],
-		});
+		return financeTextResult(
+			"Finance technical snapshot",
+			{
+				historyHealth: history.health,
+				technicalSnapshot,
+				degradedReasons: history.degradedReason ? [history.degradedReason] : [],
+			},
+			ctx,
+		);
 	},
 });
 
@@ -363,10 +489,11 @@ const contextTool = defineTool({
 		...symbolParam,
 		...contextOptions,
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return financeTextResult(
 			"Finance symbol context",
 			await client.getSymbolContext(params.symbol, optionsFromParams(params)),
+			ctx,
 		);
 	},
 });
@@ -388,10 +515,11 @@ const compareTool = defineTool({
 		}),
 		...contextOptions,
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return financeTextResult(
 			"Finance comparison",
 			await client.compareSymbols(params.symbols, optionsFromParams(params)),
+			ctx,
 		);
 	},
 });
@@ -413,10 +541,11 @@ const marketBriefTool = defineTool({
 		}),
 		...contextOptions,
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return financeTextResult(
 			"Finance market brief",
 			await client.getMarketBrief(params.symbols, optionsFromParams(params)),
+			ctx,
 		);
 	},
 });

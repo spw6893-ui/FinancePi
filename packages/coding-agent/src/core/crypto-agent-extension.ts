@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
 	CryptoContext,
 	CryptoContextOptions,
@@ -8,7 +10,7 @@ import type {
 } from "@earendil-works/pi-crypto";
 import { CryptoClient } from "@earendil-works/pi-crypto";
 import { Type } from "typebox";
-import { defineTool, type ExtensionAPI } from "./extensions/types.ts";
+import { defineTool, type ExtensionAPI, type ExtensionContext } from "./extensions/types.ts";
 
 const client = new CryptoClient();
 
@@ -28,19 +30,25 @@ function optionsFromParams(params: { interval?: string; limit?: number }): Crypt
 	};
 }
 
-export function cryptoTextResult(label: string, details: unknown) {
+export async function cryptoTextResult(label: string, details: unknown, ctx?: ExtensionContext) {
+	const artifact = ctx ? await writeCryptoArtifact(label, details, ctx.cwd) : undefined;
 	return {
-		content: [{ type: "text" as const, text: formatCryptoDetails(label, details) }],
+		content: [{ type: "text" as const, text: formatCryptoDetails(label, details, artifact) }],
 		details,
 	};
 }
 
-function formatCryptoDetails(label: string, details: unknown): string {
-	if (isSourceResult<CryptoQuote | null>(details)) return formatQuoteResult(label, details);
-	if (isSourceResult<CryptoHistory>(details)) return formatHistoryResult(label, details);
-	if (isSourceResult<CryptoDerivatives | null>(details)) return formatDerivativesResult(label, details);
-	if (isCryptoContext(details)) return formatCryptoContext(label, details);
-	return `${label} fetched. Full raw result is preserved in tool details.`;
+interface MarketArtifact {
+	relativePath: string;
+	rows: number;
+}
+
+function formatCryptoDetails(label: string, details: unknown, artifact?: MarketArtifact): string {
+	if (isHistorySourceResult(details)) return formatHistoryResult(label, details, artifact);
+	if (isDerivativesSourceResult(details)) return formatDerivativesResult(label, details, artifact);
+	if (isQuoteSourceResult(details)) return formatQuoteResult(label, details, artifact);
+	if (isCryptoContext(details)) return formatCryptoContext(label, details, artifact);
+	return `${label} fetched. Full raw result is preserved in tool details. CSV artifact: ${formatArtifact(artifact)}.`;
 }
 
 type SourceResult<T> = {
@@ -53,6 +61,24 @@ function isSourceResult<T>(value: unknown): value is SourceResult<T> {
 	return Boolean(value && typeof value === "object" && "value" in value && "health" in value);
 }
 
+function isHistorySourceResult(value: unknown): value is SourceResult<CryptoHistory> {
+	return isSourceResult<CryptoHistory>(value) && isRecord(value.value) && Array.isArray(value.value.bars);
+}
+
+function isDerivativesSourceResult(value: unknown): value is SourceResult<CryptoDerivatives | null> {
+	return (
+		isSourceResult<CryptoDerivatives | null>(value) &&
+		(value.value === null || (isRecord(value.value) && "fundingRate" in value.value))
+	);
+}
+
+function isQuoteSourceResult(value: unknown): value is SourceResult<CryptoQuote | null> {
+	return (
+		isSourceResult<CryptoQuote | null>(value) &&
+		(value.value === null || (isRecord(value.value) && "lastPrice" in value.value))
+	);
+}
+
 function isCryptoContext(value: unknown): value is CryptoContext {
 	return Boolean(
 		value &&
@@ -63,9 +89,9 @@ function isCryptoContext(value: unknown): value is CryptoContext {
 	);
 }
 
-function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | null>): string {
+function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | null>, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact Binance data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact Binance data summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
 		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
 		result.value
@@ -76,24 +102,22 @@ function formatQuoteResult(label: string, result: SourceResult<CryptoQuote | nul
 		.join("\n");
 }
 
-function formatHistoryResult(label: string, result: SourceResult<CryptoHistory>): string {
+function formatHistoryResult(label: string, result: SourceResult<CryptoHistory>, artifact?: MarketArtifact): string {
 	const bars = result.value.bars.slice(-10);
 	return [
-		`${label} fetched. Compact Binance kline summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact Binance kline summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
-		`history: symbol=${result.value.binanceSymbol}, interval=${result.value.interval}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, shownBars=${bars.length}`,
-		"",
-		"bars_csv:",
-		"openTime,closeTime,open,high,low,close,volume,quoteVolume",
-		...bars.map((bar) =>
-			csvRow([bar.openTime, bar.closeTime, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.quoteVolume]),
-		),
+		`history: symbol=${result.value.binanceSymbol}, interval=${result.value.interval}, source=${result.value.source}, latestAt=${formatValue(result.value.latestAt)}, totalBars=${result.value.bars.length}, artifactRows=${formatValue(artifact?.rows)}, latestClose=${formatValue(bars.at(-1)?.close)}`,
 	].join("\n");
 }
 
-function formatDerivativesResult(label: string, result: SourceResult<CryptoDerivatives | null>): string {
+function formatDerivativesResult(
+	label: string,
+	result: SourceResult<CryptoDerivatives | null>,
+	artifact?: MarketArtifact,
+): string {
 	return [
-		`${label} fetched. Compact Binance futures summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact Binance futures summary follows. CSV artifact: ${formatArtifact(artifact)}.`,
 		formatHealth(result.health),
 		result.degradedReason ? `degradedReason=${result.degradedReason}` : undefined,
 		result.value
@@ -104,30 +128,115 @@ function formatDerivativesResult(label: string, result: SourceResult<CryptoDeriv
 		.join("\n");
 }
 
-function formatCryptoContext(label: string, context: CryptoContext): string {
-	const bars = context.history.bars.slice(-10);
+function formatCryptoContext(label: string, context: CryptoContext, artifact?: MarketArtifact): string {
 	return [
-		`${label} fetched. Compact Binance market data summary follows; full raw result is preserved in tool details, not repeated here.`,
+		`${label} fetched. Compact Binance market data summary follows. Full CSV artifact: ${formatArtifact(artifact)}.`,
 		`asset=${context.asset}, symbol=${context.binanceSymbol}, quoteAsset=${context.quoteAsset}, asOf=${context.asOf}`,
 		formatDegraded(context.degradedReasons),
-		"",
-		"source_health_csv:",
-		"source,status,latestAt,degradedReason",
-		...context.sourceHealth.map((health) =>
-			csvRow([health.source, health.status, health.latestAt, health.degradedReason]),
-		),
-		"",
+		`sourceHealth=${context.sourceHealth.map((health) => `${health.source}:${health.status}${health.degradedReason ? `:${health.degradedReason}` : ""}`).join(" | ")}`,
 		`quote: lastPrice=${formatValue(context.quote?.lastPrice)}, changePercent24h=${formatValue(context.quote?.changePercent24h)}, baseVolume24h=${formatValue(context.quote?.baseVolume24h)}, quoteVolume24h=${formatValue(context.quote?.quoteVolume24h)}, source=${formatValue(context.quote?.source)}, asOf=${formatValue(context.quote?.asOf)}`,
 		context.derivatives
 			? `derivatives: fundingRate=${formatValue(context.derivatives.fundingRate)}, fundingTime=${formatValue(context.derivatives.fundingTime)}, openInterest=${formatValue(context.derivatives.openInterest)}, openInterestTime=${formatValue(context.derivatives.openInterestTime)}, source=${context.derivatives.source}`
 			: "derivatives: unavailable",
-		"",
-		`bars_csv_last_${bars.length}:`,
-		"openTime,closeTime,open,high,low,close,volume,quoteVolume",
-		...bars.map((bar) =>
-			csvRow([bar.openTime, bar.closeTime, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.quoteVolume]),
-		),
+		`artifactRows=${formatValue(artifact?.rows)}, historyBars=${context.history.bars.length}`,
 	].join("\n");
+}
+
+async function writeCryptoArtifact(label: string, details: unknown, cwd: string): Promise<MarketArtifact | undefined> {
+	const lines = cryptoArtifactLines(details);
+	if (!lines) return undefined;
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const relativePath = `.pi/artifacts/market-data/${stamp}-${slugify(label)}.csv`;
+	const dir = join(cwd, ".pi", "artifacts", "market-data");
+	await mkdir(dir, { recursive: true });
+	await writeFile(join(cwd, relativePath), lines.join("\n"), "utf8");
+	return { relativePath, rows: Math.max(0, lines.length - 1) };
+}
+
+function cryptoArtifactLines(details: unknown): string[] | undefined {
+	if (isHistorySourceResult(details)) {
+		return [
+			"openTime,closeTime,open,high,low,close,volume,quoteVolume",
+			...details.value.bars.map((bar) =>
+				csvRow([bar.openTime, bar.closeTime, bar.open, bar.high, bar.low, bar.close, bar.volume, bar.quoteVolume]),
+			),
+		];
+	}
+	if (isQuoteSourceResult(details)) {
+		const quote = details.value;
+		return [
+			"symbol,lastPrice,changePercent24h,baseVolume24h,quoteVolume24h,asOf,source,status,degradedReason",
+			csvRow([
+				quote?.binanceSymbol,
+				quote?.lastPrice,
+				quote?.changePercent24h,
+				quote?.baseVolume24h,
+				quote?.quoteVolume24h,
+				quote?.asOf,
+				quote?.source,
+				details.health.status,
+				details.degradedReason,
+			]),
+		];
+	}
+	if (isDerivativesSourceResult(details)) {
+		const derivatives = details.value;
+		return [
+			"symbol,fundingRate,fundingTime,openInterest,openInterestTime,source,status,degradedReason",
+			csvRow([
+				derivatives?.binanceSymbol,
+				derivatives?.fundingRate,
+				derivatives?.fundingTime,
+				derivatives?.openInterest,
+				derivatives?.openInterestTime,
+				derivatives?.source,
+				details.health.status,
+				details.degradedReason,
+			]),
+		];
+	}
+	if (isCryptoContext(details)) return cryptoContextArtifactLines(details);
+	return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === "object");
+}
+
+function cryptoContextArtifactLines(context: CryptoContext): string[] {
+	return [
+		"section,openTime,closeTime,open,high,low,close,volume,quoteVolume,source,status,latestAt,degradedReason",
+		...context.sourceHealth.map((health) =>
+			csvRow([
+				"source_health",
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				health.source,
+				health.status,
+				health.latestAt,
+				health.degradedReason,
+			]),
+		),
+		...context.history.bars.map((bar) =>
+			csvRow([
+				"bar",
+				bar.openTime,
+				bar.closeTime,
+				bar.open,
+				bar.high,
+				bar.low,
+				bar.close,
+				bar.volume,
+				bar.quoteVolume,
+			]),
+		),
+	];
 }
 
 function formatHealth(health: SourceHealth): string {
@@ -136,6 +245,10 @@ function formatHealth(health: SourceHealth): string {
 
 function formatDegraded(reasons: string[]): string {
 	return reasons.length > 0 ? `degradedReasons=${reasons.join("|")}` : "degradedReasons=none";
+}
+
+function formatArtifact(artifact: MarketArtifact | undefined): string {
+	return artifact ? `${artifact.relativePath} (csv, rows=${artifact.rows})` : "not written";
 }
 
 function formatValue(value: unknown): string {
@@ -154,6 +267,15 @@ function csvCell(value: unknown): string {
 	return `"${text.replaceAll('"', '""')}"`;
 }
 
+function slugify(value: string): string {
+	return (
+		value
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "") || "market-data"
+	);
+}
+
 const quoteTool = defineTool({
 	name: "crypto_quote",
 	label: "Crypto Quote",
@@ -164,8 +286,8 @@ const quoteTool = defineTool({
 		"When using crypto_quote values, mention Binance source/asOf if available.",
 	],
 	parameters: Type.Object(symbolParam),
-	async execute(_toolCallId, params) {
-		return cryptoTextResult("Crypto quote", await client.getCryptoQuote(params.symbol));
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return cryptoTextResult("Crypto quote", await client.getCryptoQuote(params.symbol), ctx);
 	},
 });
 
@@ -182,10 +304,11 @@ const historyTool = defineTool({
 		...symbolParam,
 		...cryptoOptions,
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return cryptoTextResult(
 			"Crypto history",
 			await client.getCryptoHistory(params.symbol, params.interval, params.limit),
+			ctx,
 		);
 	},
 });
@@ -200,8 +323,8 @@ const derivativesTool = defineTool({
 		"Do not infer crowded positioning unless funding or open-interest data is present in the tool result.",
 	],
 	parameters: Type.Object(symbolParam),
-	async execute(_toolCallId, params) {
-		return cryptoTextResult("Crypto derivatives", await client.getCryptoDerivatives(params.symbol));
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return cryptoTextResult("Crypto derivatives", await client.getCryptoDerivatives(params.symbol), ctx);
 	},
 });
 
@@ -218,10 +341,11 @@ const contextTool = defineTool({
 		...symbolParam,
 		...cryptoOptions,
 	}),
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 		return cryptoTextResult(
 			"Crypto context",
 			await client.getCryptoContext(params.symbol, optionsFromParams(params)),
+			ctx,
 		);
 	},
 });
