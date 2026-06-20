@@ -24,15 +24,17 @@ See `.pi/finance-mcp.example.json` for a corrected template manifest.
 
 ## Data-source priority
 
-Use the highest reliable source available for the fact type:
+Use the smallest reliable source set that can answer the question:
 
 1. User-uploaded files and local artifacts, if the user wants those analyzed.
-2. Institutional MCP/data connectors when configured and relevant.
-3. SEC EDGAR or primary issuer filings for reported fundamentals.
-4. Exchange or broker/data-provider APIs for current or historical market data.
+2. Default free Pi sources:
+   - SEC EDGAR for reported US fundamentals and filings.
+   - Yahoo chart/news for public US equity/ETF context.
+   - Binance public market data for crypto spot, klines, funding, and open interest.
+3. Optional free-key source: FRED for macro data, if a key is configured.
+4. Institutional MCP/data connectors only when `.pi/finance-mcp.json` is configured and the request needs premium data such as estimates, transcripts, ownership, institutional financials, private-market data, or audited data packs.
 5. Company investor relations materials for management commentary and segment/KPI detail.
-6. Reputable news for recent catalysts only.
-7. General web search only for source discovery or freshness checks.
+6. Reputable news or web search only for freshness, catalysts, or source discovery.
 
 ## Citation and audit rules
 
@@ -50,4 +52,4 @@ Pi currently has local tools for:
 - Crypto context: `crypto_quote`, `crypto_history`, `crypto_derivatives`, `crypto_context`.
 - Institutional MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
 
-When `.pi/finance-mcp.json` is configured, prefer MCP tools for institutional-grade financials, estimates, transcripts, ownership, and comps. Use Pi local tools as fallback or for quick public-data context.
+Keep the free stack intentionally small. Do not add Alpha Vantage, FMP, Finnhub, Twelve Data, Polygon, CoinGecko, DefiLlama, or similar providers to the default agent path unless a specific feature needs them. When `.pi/finance-mcp.json` is configured, prefer MCP tools only for institutional-grade data that the free stack cannot provide.

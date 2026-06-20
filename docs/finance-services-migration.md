@@ -72,10 +72,13 @@ Connector categories:
 Pi finance workflows should prefer:
 
 1. user-provided files and local `.pi/artifacts/market-data/*.csv`;
-2. configured institutional MCP/data connectors;
-3. Pi local `finance_*` and `crypto_*` tools;
-4. primary SEC filings and issuer materials;
-5. web/news search for freshness and catalysts, not primary valuation data.
+2. the compact free-source stack: SEC EDGAR, Yahoo chart/news, and Binance public market data;
+3. optional FRED macro data when a free key is configured;
+4. configured institutional MCP/data connectors only when premium data is required;
+5. primary issuer materials for segment/KPI commentary;
+6. web/news search for freshness and catalysts, not primary valuation data.
+
+Deliberately excluded from the default path: Alpha Vantage, FMP, Finnhub, Twelve Data, Polygon, CoinGecko, DefiLlama, and similar broad provider catalogs. They can be added later as explicit features, but the default finance agent should not scatter calls across many partially overlapping free tiers.
 
 ## Why this shape
 
