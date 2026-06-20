@@ -48,5 +48,6 @@ Pi currently has local tools for:
 
 - US equity/ETF context: `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, `finance_market_brief`.
 - Crypto context: `crypto_quote`, `crypto_history`, `crypto_derivatives`, `crypto_context`.
+- Institutional MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
 
-If actual MCP tools become available in a session, prefer them for institutional-grade financials, estimates, transcripts, ownership, and comps. Use Pi local tools as fallback or for quick public-data context.
+When `.pi/finance-mcp.json` is configured, prefer MCP tools for institutional-grade financials, estimates, transcripts, ownership, and comps. Use Pi local tools as fallback or for quick public-data context.

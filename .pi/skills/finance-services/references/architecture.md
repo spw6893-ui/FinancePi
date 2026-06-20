@@ -20,7 +20,7 @@ The repository is a financial-services agent system, not a single prompt. It has
 
 4. **Connectors**
    - MCP connectors for institutional data and document systems.
-   - In Pi, connector configuration is represented by `.pi/finance-mcp.example.json`; actual MCP runtime integration is intentionally not assumed.
+   - In Pi, connector configuration is represented by `.pi/finance-mcp.example.json`; active runtime configuration lives in `.pi/finance-mcp.json` and is exposed through `finance_mcp_*` tools.
 
 ## Pi mapping
 

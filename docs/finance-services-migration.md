@@ -46,7 +46,11 @@ They all route into `/skill:finance-services` and then ask the model to run the 
 
 ## MCP connector template
 
-`.pi/finance-mcp.example.json` is a corrected, Pi-local example manifest based on Anthropic's financial-services MCP catalog. It is not automatically enabled by Pi. Use it as a connector inventory for an MCP-capable runtime or a future Pi extension layer.
+`.pi/finance-mcp.example.json` is a corrected, Pi-local example manifest based on Anthropic's financial-services MCP catalog. To enable runtime calls, copy the needed entries to `.pi/finance-mcp.json`, fill provider URLs/headers/tokens, then use:
+
+- `finance_mcp_servers`
+- `finance_mcp_list_tools`
+- `finance_mcp_call_tool`
 
 Connector categories:
 
@@ -75,10 +79,11 @@ Pi finance workflows should prefer:
 
 ## Why this shape
 
-Pi currently documents "No MCP" as a default product stance. The migrated version therefore puts Anthropic's connector architecture into:
+Pi keeps this MCP support project-local and finance-specific. The migrated version puts Anthropic's connector architecture into:
 
 - an explicit manifest template,
+- runtime `finance_mcp_*` tools,
 - prompt/source-priority rules,
 - and project skills/prompts that can be used today.
 
-This keeps the current Pi CLI working without introducing a service process, FastAPI, MongoDB, or a new MCP runtime.
+This keeps the current Pi CLI working without introducing a service process, FastAPI, MongoDB, or a separate MCP runtime daemon.

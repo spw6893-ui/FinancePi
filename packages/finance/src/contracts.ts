@@ -7,6 +7,12 @@ export interface SourceHealth {
 	degradedReason?: string;
 }
 
+export interface SourceResult<T> {
+	value: T;
+	health: SourceHealth;
+	degradedReason?: string;
+}
+
 export interface Quote {
 	symbol: string;
 	market: MarketCode;
@@ -132,4 +138,38 @@ export interface SymbolContextOptions {
 	newsLimit?: number;
 	historyRange?: string;
 	historyInterval?: string;
+}
+
+export interface FinanceMcpServerConfig {
+	type?: "http";
+	url: string;
+	headers?: Record<string, string>;
+	disabled?: boolean;
+}
+
+export interface FinanceMcpConfig {
+	mcpServers: Record<string, FinanceMcpServerConfig>;
+}
+
+export interface FinanceMcpTool {
+	name: string;
+	description?: string;
+	inputSchema?: unknown;
+}
+
+export interface FinanceMcpToolsResult {
+	server: string;
+	tools: FinanceMcpTool[];
+	source: string;
+	asOf: string;
+}
+
+export interface FinanceMcpToolCallResult {
+	server: string;
+	toolName: string;
+	content: unknown[];
+	structuredContent?: unknown;
+	rawResult?: unknown;
+	source: string;
+	asOf: string;
 }

@@ -9,18 +9,12 @@ import type {
 	NewsResult,
 	PriceBar,
 	Quote,
-	SourceHealth,
+	SourceResult,
 	SymbolContext,
 	SymbolContextOptions,
 } from "./contracts.ts";
 import { inferMarketCode, normalizeSymbol } from "./symbols.ts";
 import { buildTechnicalSnapshot } from "./technical.ts";
-
-interface SourceResult<T> {
-	value: T;
-	health: SourceHealth;
-	degradedReason?: string;
-}
 
 interface SecTickerEntry {
 	cik_str?: number;

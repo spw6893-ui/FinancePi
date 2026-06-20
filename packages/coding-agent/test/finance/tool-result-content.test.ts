@@ -130,4 +130,46 @@ describe("finance tool result content", () => {
 			await rm(cwd, { recursive: true, force: true });
 		}
 	});
+
+	it("summarizes MCP tool results without flushing raw JSON", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-mcp-artifact-"));
+		const result = await financeTextResult(
+			"Finance MCP tool call",
+			{
+				value: {
+					server: "factset",
+					toolName: "get_estimates",
+					content: [{ type: "text", text: "NVDA revenue estimate: 1" }],
+					structuredContent: { ticker: "NVDA", rows: [{ value: 1 }] },
+					source: "mcp:factset",
+					asOf: "2026-06-21T00:00:00.000Z",
+				},
+				health: { source: "mcp:factset", status: "ok", latestAt: "2026-06-21T00:00:00.000Z" },
+			},
+			{
+				cwd,
+			} as never,
+		);
+
+		try {
+			const text = result.content[0]?.text ?? "";
+
+			expect(text).toContain("Finance MCP tool call fetched");
+			expect(text).toContain("server=factset");
+			expect(text).toContain("tool=get_estimates");
+			expect(text).toContain("contentItems=1");
+			expect(text).toContain("structured=yes");
+			expect(text).toContain(".pi/artifacts/market-data/");
+			expect(text).not.toContain('"structuredContent"');
+			expect(text).not.toContain('"rows"');
+
+			const artifactPath = text.match(/\.pi\/artifacts\/market-data\/\S+\.csv/)?.[0];
+			expect(artifactPath).toBeTruthy();
+			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
+			expect(csv).toContain("server,toolName,index,type,text");
+			expect(csv).toContain("factset,get_estimates,0,text,NVDA revenue estimate: 1");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
 });
