@@ -80,6 +80,8 @@ Pi finance workflows should prefer:
 
 Deliberately excluded from the default path: Alpha Vantage, FMP, Finnhub, Twelve Data, Polygon, CoinGecko, DefiLlama, and similar broad provider catalogs. They can be added later as explicit features, but the default finance agent should not scatter calls across many partially overlapping free tiers.
 
+The default free US equity price path is chart-derived. It should be presented as latest available price/bar/close with `asOf` metadata, not as a guaranteed real-time or live intraday quote.
+
 ## Why this shape
 
 Pi keeps this MCP support project-local and finance-specific. The migrated version puts Anthropic's connector architecture into:

@@ -29,7 +29,7 @@ Use the smallest reliable source set that can answer the question:
 1. User-uploaded files and local artifacts, if the user wants those analyzed.
 2. Default free Pi sources:
    - SEC EDGAR for reported US fundamentals and filings.
-   - Yahoo chart/news for public US equity/ETF context.
+   - Yahoo chart/news for public US equity/ETF context. Treat chart-derived prices as latest available bars or closes, not guaranteed real-time quotes.
    - Binance public market data for crypto spot, klines, funding, and open interest.
 3. Optional free-key source: FRED for macro data, if a key is configured.
 4. Institutional MCP/data connectors only when `.pi/finance-mcp.json` is configured and the request needs premium data such as estimates, transcripts, ownership, institutional financials, private-market data, or audited data packs.

@@ -532,11 +532,12 @@ async function financeMcpServers(
 const quoteTool = defineTool({
 	name: "finance_quote",
 	label: "Finance Quote",
-	description: "Fetch the latest public quote for a US equity or ETF symbol.",
-	promptSnippet: "Fetch sourced US equity/ETF quote data",
+	description:
+		"Fetch the latest available free public price for a US equity or ETF symbol, usually latest chart close/bar rather than real-time NBBO or live intraday quote.",
+	promptSnippet: "Fetch sourced latest-available US equity/ETF price data",
 	promptGuidelines: [
-		"finance_quote provides current price, market cap, exchange, and quote facts for US equities or ETFs.",
-		"When using finance_quote values, mention source/asOf if available.",
+		"finance_quote provides latest-available free public price data for US equities or ETFs. It is not guaranteed to be real-time or live intraday.",
+		"When using finance_quote values, mention source/asOf and avoid calling it a real-time quote unless the source explicitly says so.",
 	],
 	parameters: Type.Object(symbolParam),
 	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -820,6 +821,7 @@ FINANCE AGENT MODE:
 - You are a US equity and ETF research agent.
 - finance_* tools can provide prices, history, news, SEC facts, technical snapshots, comparisons, market briefs, and configured institutional MCP calls when useful.
 - Use finance_mcp_servers, finance_mcp_list_tools, and finance_mcp_call_tool for configured institutional connectors in .pi/finance-mcp.json.
+- Default free US equity prices are latest-available chart/news data, not guaranteed real-time or live intraday quotes.
 - Do not invent prices, dates, financial metrics, filing facts, or news. If tool data is missing, say what is missing.
 - When using tool data, mention source/asOf/latestAt where available.
 - Let the user's question determine which tools to call and how to structure the answer; do not force a fixed template.

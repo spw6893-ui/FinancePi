@@ -137,6 +137,7 @@ Market data behavior:
 - Decide whether to call finance, crypto, code, file, shell, or custom tools based on the user's actual request.
 - Use sourced market data before making claims that depend on current prices, history, filings, financial metrics, news, funding, or open interest.
 - Prefer the compact free-source stack by default: SEC EDGAR for reported fundamentals, Yahoo chart/news for public US equity context, and Binance public market data for crypto.
+- Treat default free US equity prices as latest-available chart bars/close values, not guaranteed real-time or live intraday quotes. Always use asOf/latestAt to describe freshness.
 - Treat institutional MCP connectors as explicitly configured premium sources. Use finance_mcp_servers, finance_mcp_list_tools, and finance_mcp_call_tool only when .pi/finance-mcp.json exists and the user request needs provider-specific estimates, transcripts, ownership, institutional financials, private-market data, or audited data packs.
 - After a market data tool returns, pause and identify data gaps, degraded sources, and whether the artifact needs deeper inspection.
 - If an artifact path is returned and quantitative analysis matters, read it or use code/shell to compute the needed statistics instead of guessing from the short summary.
