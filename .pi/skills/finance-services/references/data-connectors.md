@@ -18,7 +18,7 @@ Use the smallest reliable source set that can answer the question:
 3. Optional free-key source: FRED for macro data, if a key is configured.
 4. User-configured MCP/data connectors only when `.pi/finance-mcp.json` points to a working free, self-hosted, or explicitly licensed server.
 5. Company investor relations materials for management commentary and segment/KPI detail.
-6. Reputable news or web search only for freshness, catalysts, or source discovery.
+6. `web_search` and `web_open` only for freshness, catalysts, source discovery, or verification.
 
 ## Citation and audit rules
 
@@ -35,5 +35,6 @@ Pi currently has local tools for:
 - US equity/ETF context: `finance_quote`, `finance_history`, `finance_news`, `finance_sec_facts`, `finance_technical_snapshot`, `finance_symbol_context`, `finance_compare_symbols`, `finance_market_brief`.
 - Crypto context: `crypto_quote`, `crypto_history`, `crypto_derivatives`, `crypto_context`.
 - User-configured MCP context: `finance_mcp_servers`, `finance_mcp_list_tools`, `finance_mcp_call_tool`.
+- Web research context: `web_search`, `web_open`. Configure `PI_WEB_SEARCH_SEARXNG_URL` for reliable free/self-hosted search; otherwise DuckDuckGo HTML search is best-effort and may degrade.
 
 Keep the free stack intentionally small. Do not add broad free-tier APIs or paid institutional providers to the default agent path unless a specific feature needs them and the user provides working access.

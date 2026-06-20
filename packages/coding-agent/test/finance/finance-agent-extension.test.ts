@@ -4,6 +4,7 @@ import { parseArgs } from "../../src/cli/args.ts";
 import { getCliExtensionFactories } from "../../src/cli/builtin-extensions.ts";
 import cryptoAgentExtension from "../../src/core/crypto-agent-extension.ts";
 import coreFinanceAgentExtension from "../../src/core/finance-agent-extension.ts";
+import webAgentExtension from "../../src/core/web-agent-extension.ts";
 import { createTestExtensionsResult } from "../utilities.ts";
 
 describe("finance agent extension", () => {
@@ -29,11 +30,13 @@ describe("finance agent extension", () => {
 			existingFactory,
 			coreFinanceAgentExtension,
 			cryptoAgentExtension,
+			webAgentExtension,
 		]);
 		expect(getCliExtensionFactories(parseArgs(["--finance"]), [existingFactory])).toEqual([
 			existingFactory,
 			coreFinanceAgentExtension,
 			cryptoAgentExtension,
+			webAgentExtension,
 		]);
 	});
 });
