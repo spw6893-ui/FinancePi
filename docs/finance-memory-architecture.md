@@ -24,7 +24,7 @@
 
 ## Status
 
-当前状态：设计已进入 MVP 实现阶段。
+当前状态：core memory substrate 已进入 MVP 实现阶段，并已从 finance extension 的临时接入提升为 core extension capability。
 
 已有代码证据：
 
@@ -35,6 +35,9 @@
 - memory tools：`packages/coding-agent/src/core/memory/memory-tools.ts`
 - system prompt memory block：`packages/coding-agent/src/core/memory/memory-context.ts`
 - Finance namespace：`packages/coding-agent/src/core/memory/namespace-registry.ts`
+- Memory provider lifecycle：`packages/coding-agent/src/core/memory/memory-provider.ts`
+- Extension memory registration：`packages/coding-agent/src/core/extensions/types.ts`
+- Extension memory loading：`packages/coding-agent/src/core/extensions/loader.ts`
 - Finance extension 接入：`packages/coding-agent/src/core/finance-agent-extension.ts`
 - Finance market continuation：`packages/coding-agent/src/core/agent-session.ts`
 - 测试：`packages/coding-agent/test/memory/*`、`packages/coding-agent/test/finance/finance-memory-namespace.test.ts`
@@ -393,25 +396,32 @@ FinancePi 第一版坚持本地文件：
 - 容易测试。
 - 不依赖付费服务。
 
-## Future Core Integration
+## Core Integration
 
-下一步建议把 memory 从 finance extension 的临时接入提升为 core extension capability：
+Memory 已从 finance extension 的临时接入提升为 core extension capability：
 
 ```ts
 pi.registerMemoryNamespace(createFinanceMemoryNamespace());
 ```
 
+Extension 也可以注册 Hermes-style provider：
+
+```ts
+pi.registerMemoryProvider(provider);
+```
+
 AgentSession 在构建 system prompt 时：
 
 1. 从已加载 extensions 收集 memory namespaces。
-2. 创建 `MemoryStore({ cwd, namespaces })`。
-3. 调用 `buildMemorySystemPromptBlock()`。
-4. 把短 memory block 注入基础 system prompt。
+2. 创建 `MemoryManager({ cwd, namespaces, providers })`。
+3. 初始化可用 provider。
+4. 调用 `buildMemorySystemPromptBlock()`。
+5. 追加 provider 的 system prompt block。
+6. 把短 memory block 注入基础 system prompt。
 
 Finance extension 只负责：
 
 - 注册 finance namespace。
-- 注册通用 memory tools。
 - 在 finance prompt 里说明金融场景的 memory 使用策略。
 
 这样以后 coding、research、ops 等 namespace 也能共用同一套 core memory。
@@ -432,11 +442,14 @@ Finance extension 只负责：
 
 ### Phase 2：Core extension registration
 
-目标：
+已覆盖：
 
 - 新增 extension API：`registerMemoryNamespace`。
 - AgentSession 统一注入 memory block。
 - Finance extension 不再手写 memory prompt 拼接。
+- Core 自动暴露 `memory_list/read/search/write`。
+- 新增 extension API：`registerMemoryProvider`。
+- AgentSession 初始化 provider 并追加 provider prompt block。
 
 ### Phase 3：Session search
 
@@ -489,6 +502,7 @@ interface MemoryProvider {
 
 ## Related
 
+- `docs/core-memory-architecture-design.md`
 - `docs/superpowers/specs/2026-06-21-finance-memory-layer-design.md`
 - `docs/superpowers/specs/2026-06-21-core-memory-substrate-design.md`
 - `docs/superpowers/plans/2026-06-21-core-memory-substrate.md`
@@ -496,4 +510,5 @@ interface MemoryProvider {
 
 ## Changelog
 
+- 2026-06-21：更新 core integration 状态，补充 memory provider lifecycle 和 core 自动工具注册。
 - 2026-06-21：新增 FinancePi memory architecture 设计文档，基于当前 core memory MVP、Finance namespace 和 Hermes-style 分层记忆方案整理。

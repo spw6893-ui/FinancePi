@@ -6,6 +6,8 @@ import { fauxAssistantMessage, fauxToolCall, type Model } from "@earendil-works/
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { InputEvent } from "../../src/core/extensions/index.ts";
+import type { MemoryProvider } from "../../src/core/memory/memory-provider.ts";
+import { createFinanceMemoryNamespace } from "../../src/core/memory/namespace-registry.ts";
 import type { PromptTemplate } from "../../src/core/prompt-templates.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { createTestResourceLoader } from "../utilities.ts";
@@ -38,6 +40,85 @@ describe("AgentSession prompt characterization", () => {
 		expect(harness.session.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
 		expect(getMessageText(harness.session.messages[0]!)).toBe("hi");
 		expect(harness.getPendingResponseCount()).toBe(0);
+	});
+
+	it("syncs completed user and assistant turns to registered memory providers", async () => {
+		const syncedTurns: string[] = [];
+		const provider: MemoryProvider = {
+			name: "turn-sync-memory",
+			isAvailable: () => true,
+			initialize: async () => {},
+			syncTurn: async (turn, ctx) => {
+				syncedTurns.push(`${ctx.sessionId ?? "none"}:${turn.user}->${turn.assistant}`);
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-turn-sync>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([fauxAssistantMessage("noted")]);
+
+		await harness.session.prompt("remember NVDA");
+
+		expect(syncedTurns).toEqual([`${harness.session.sessionId}:remember NVDA->noted`]);
+	});
+
+	it("does not sync intermediate tool-use turns to memory providers", async () => {
+		const syncedTurns: string[] = [];
+		const provider: MemoryProvider = {
+			name: "turn-sync-memory",
+			isAvailable: () => true,
+			initialize: async () => {},
+			syncTurn: async (turn) => {
+				syncedTurns.push(`${turn.user}->${turn.assistant}`);
+			},
+		};
+		const echoTool: AgentTool = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo text back",
+			parameters: Type.Object({ text: Type.String() }),
+			execute: async (_toolCallId, params) => {
+				const text = typeof params === "object" && params !== null && "text" in params ? String(params.text) : "";
+				return {
+					content: [{ type: "text", text: `echo:${text}` }],
+					details: params,
+				};
+			},
+		};
+		const harness = await createHarness({
+			tools: [echoTool],
+			extensionFactories: [
+				{
+					path: "<memory-turn-sync>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("echo", { text: "NVDA" }), { stopReason: "toolUse" }),
+			fauxAssistantMessage("final view"),
+		]);
+
+		await harness.session.prompt("analyze NVDA");
+
+		expect(syncedTurns).toEqual(["analyze NVDA->final view"]);
 	});
 
 	it("handles a tool call turn and waits for the follow-up LLM response", async () => {

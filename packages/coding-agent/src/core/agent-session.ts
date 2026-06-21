@@ -668,6 +668,46 @@ export class AgentSession {
 		return textBlocks.map((c) => (c as TextContent).text).join("");
 	}
 
+	private _getAssistantMessageText(message: AssistantMessage): string {
+		return message.content
+			.filter((content): content is TextContent => content.type === "text")
+			.map((content) => content.text)
+			.join("\n")
+			.trim();
+	}
+
+	private _findPreviousUserMessageText(message: AgentMessage): string {
+		const messages = this.agent.state.messages;
+		const messageIndex = messages.lastIndexOf(message);
+		const endIndex = messageIndex >= 0 ? messageIndex - 1 : messages.length - 1;
+		for (let i = endIndex; i >= 0; i--) {
+			const candidate = messages[i];
+			if (candidate.role !== "user") continue;
+			const text = this._getUserMessageText(candidate);
+			if (text.trim()) return text.trim();
+		}
+		return "";
+	}
+
+	private async _syncMemoryProviderTurn(message: AgentMessage, toolResultCount: number): Promise<void> {
+		if (message.role !== "assistant") return;
+		if (message.stopReason === "error" || message.stopReason === "aborted") return;
+		if (toolResultCount > 0) return;
+		const assistant = this._getAssistantMessageText(message).trim();
+		if (!assistant) return;
+		const user = this._findPreviousUserMessageText(message);
+		if (!user) return;
+		try {
+			await this._getMemoryManager().syncTurn({ user, assistant }, { sessionId: this.sessionId });
+		} catch (error) {
+			this._extensionRunner.emitError({
+				extensionPath: "<core:memory>",
+				event: "memory_sync_turn",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
 	/** Find the last assistant message in agent state (including aborted ones) */
 	private _findLastAssistantMessage(): AssistantMessage | undefined {
 		const messages = this.agent.state.messages;
@@ -718,6 +758,7 @@ export class AgentSession {
 				toolResults: event.toolResults,
 			};
 			await this._extensionRunner.emit(extensionEvent);
+			await this._syncMemoryProviderTurn(event.message, event.toolResults.length);
 			this._turnIndex++;
 		} else if (event.type === "message_start") {
 			const extensionEvent: MessageStartEvent = {
