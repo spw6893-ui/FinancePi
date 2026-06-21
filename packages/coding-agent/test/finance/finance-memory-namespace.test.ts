@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import { AgentSession } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import financeAgentExtension from "../../src/core/finance-agent-extension.ts";
+import type { MemoryManager } from "../../src/core/memory/memory-manager.ts";
+import type { MemoryProvider } from "../../src/core/memory/memory-provider.ts";
 import { createFinanceMemoryNamespace } from "../../src/core/memory/namespace-registry.ts";
 import { ModelRegistry } from "../../src/core/model-registry.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -143,6 +145,41 @@ describe("finance memory namespace", () => {
 				]);
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
 				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
+	it("collects extension-registered memory providers into AgentSession memory manager", async () => {
+		await withTempCwd(async (cwd) => {
+			const provider: MemoryProvider = {
+				name: "external-memory",
+				isAvailable: () => true,
+				initialize: async () => {},
+				prefetch: async (query) => `provider:${query}`,
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(provider);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				const manager = (session as unknown as { _getMemoryManager: () => MemoryManager })._getMemoryManager();
+				await manager.initializeProviders({ namespace: "finance" });
+
+				expect(result.extensions[0]?.memoryProviders.map((item) => item.name)).toEqual(["external-memory"]);
+				expect(manager.getAvailableProviders().map((item) => item.name)).toEqual(["external-memory"]);
+				expect(await manager.prefetch("NVDA", { namespace: "finance" })).toBe("provider:NVDA");
 			} finally {
 				session.dispose();
 			}

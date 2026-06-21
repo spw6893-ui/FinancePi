@@ -83,6 +83,7 @@ import {
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 import { MemoryManager } from "./memory/memory-manager.ts";
+import type { MemoryProvider } from "./memory/memory-provider.ts";
 import type { MemoryNamespaceConfig } from "./memory/memory-types.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { ModelRegistry } from "./model-registry.ts";
@@ -998,8 +999,22 @@ export class AgentSession {
 		return [...namespaces.values()];
 	}
 
+	private _getMemoryProviders(): MemoryProvider[] {
+		const providers = new Map<string, MemoryProvider>();
+		for (const extension of this._resourceLoader.getExtensions().extensions) {
+			for (const provider of extension.memoryProviders ?? []) {
+				providers.set(provider.name, provider);
+			}
+		}
+		return [...providers.values()];
+	}
+
 	private _getMemoryManager(): MemoryManager {
-		return new MemoryManager({ cwd: this._cwd, namespaces: this._getMemoryNamespaces() });
+		return new MemoryManager({
+			cwd: this._cwd,
+			namespaces: this._getMemoryNamespaces(),
+			providers: this._getMemoryProviders(),
+		});
 	}
 
 	private _rebuildSystemPrompt(toolNames: string[]): string {

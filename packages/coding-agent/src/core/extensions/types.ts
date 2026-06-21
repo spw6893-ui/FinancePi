@@ -47,6 +47,7 @@ import type { EventBus } from "../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../exec.ts";
 import type { ReadonlyFooterDataProvider } from "../footer-data-provider.ts";
 import type { KeybindingsManager } from "../keybindings.ts";
+import type { MemoryProvider } from "../memory/memory-provider.ts";
 import type { MemoryNamespaceConfig } from "../memory/memory-types.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRegistry } from "../model-registry.ts";
@@ -1175,6 +1176,9 @@ export interface ExtensionAPI {
 	/** Register a persistent memory namespace that core can inject and expose through memory tools. */
 	registerMemoryNamespace(namespace: MemoryNamespaceConfig): void;
 
+	/** Register an external memory provider for recall/sync lifecycle hooks. */
+	registerMemoryProvider(provider: MemoryProvider): void;
+
 	// =========================================================================
 	// Command, Shortcut, Flag Registration
 	// =========================================================================
@@ -1585,6 +1589,7 @@ export interface Extension {
 	handlers: Map<string, HandlerFn[]>;
 	tools: Map<string, RegisteredTool>;
 	memoryNamespaces: MemoryNamespaceConfig[];
+	memoryProviders: MemoryProvider[];
 	messageRenderers: Map<string, MessageRenderer>;
 	commands: Map<string, RegisteredCommand>;
 	flags: Map<string, ExtensionFlag>;

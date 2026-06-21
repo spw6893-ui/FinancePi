@@ -220,6 +220,16 @@ function createExtensionAPI(
 			}
 		},
 
+		registerMemoryProvider(provider): void {
+			runtime.assertActive();
+			const existing = extension.memoryProviders.findIndex((item) => item.name === provider.name);
+			if (existing >= 0) {
+				extension.memoryProviders[existing] = provider;
+			} else {
+				extension.memoryProviders.push(provider);
+			}
+		},
+
 		registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void {
 			runtime.assertActive();
 			extension.commands.set(name, {
@@ -381,6 +391,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		handlers: new Map(),
 		tools: new Map(),
 		memoryNamespaces: [],
+		memoryProviders: [],
 		messageRenderers: new Map(),
 		commands: new Map(),
 		flags: new Map(),
