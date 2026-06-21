@@ -414,7 +414,10 @@ function formatProviderToolResult(result: unknown): string {
 	return `${text.slice(0, 2000)}\n[truncated]`;
 }
 
-export function createMemoryProviderTools(providers: MemoryProvider[]) {
+export function createMemoryProviderTools(
+	providers: MemoryProvider[],
+	options: { onProviderError?: (provider: MemoryProvider, error: unknown) => void } = {},
+) {
 	return providers.flatMap((provider) =>
 		(provider.getToolDefinitions?.() ?? []).map((providerTool) =>
 			defineTool({
@@ -447,6 +450,7 @@ export function createMemoryProviderTools(providers: MemoryProvider[]) {
 						};
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
+						options.onProviderError?.(provider, error);
 						return {
 							content: [
 								{

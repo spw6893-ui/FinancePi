@@ -37,7 +37,15 @@ export interface MemoryProviderTool {
 
 export interface MemoryProviderError {
 	provider: string;
-	phase: "isAvailable" | "initialize" | "systemPromptBlock" | "prefetch" | "syncTurn" | "onSessionEnd" | "shutdown";
+	phase:
+		| "isAvailable"
+		| "initialize"
+		| "systemPromptBlock"
+		| "prefetch"
+		| "syncTurn"
+		| "onSessionEnd"
+		| "shutdown"
+		| "handleToolCall";
 	message: string;
 }
 

@@ -53,7 +53,9 @@ export class MemoryManager {
 	}
 
 	createProviderTools() {
-		return createMemoryProviderTools(this.getAvailableProviders());
+		return createMemoryProviderTools(this.getAvailableProviders(), {
+			onProviderError: (provider, error) => this.recordProviderError(provider, "handleToolCall", error),
+		});
 	}
 
 	buildSystemPromptBlock(): string {

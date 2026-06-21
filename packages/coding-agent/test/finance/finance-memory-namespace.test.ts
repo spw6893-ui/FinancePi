@@ -315,12 +315,17 @@ describe("finance memory namespace", () => {
 				await session.bindExtensions({});
 				const tool = session.getToolDefinition("memory_external_lookup");
 				const output = await tool?.execute("lookup", { query: "NVDA" }, undefined, undefined, { cwd } as never);
+				const audit = session.getToolDefinition("memory_provider_audit");
+				const auditOutput = await audit?.execute("audit", {}, undefined, undefined, { cwd } as never);
 
 				expect((output as any).isError).toBe(true);
 				expect(getText(output)).toContain("memory provider tool error");
 				expect(getText(output)).toContain("provider=provider-tools");
 				expect(getText(output)).toContain("tool=memory_external_lookup");
 				expect(getText(output)).toContain("provider lookup failed");
+				expect(getText(auditOutput)).toContain("memory_provider_audit: configured=1 available=1 errors=1");
+				expect(getText(auditOutput)).toContain("error provider=provider-tools phase=handleToolCall");
+				expect(getText(auditOutput)).toContain("provider lookup failed");
 			} finally {
 				session.dispose();
 			}
