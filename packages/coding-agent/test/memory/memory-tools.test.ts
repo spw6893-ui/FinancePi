@@ -361,4 +361,31 @@ describe("memory tools", () => {
 			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
 		});
 	});
+
+	it("rolls back compact memory index when research report file write fails", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi"), { recursive: true });
+			await writeFile(join(cwd, ".pi", "research"), "not a directory");
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "Report write failure",
+					summary: "symbol=NVDA | asOf=2026-06-21 | valid index should roll back.",
+					content: "# Report write failure\n\nThe file write will fail because .pi/research is a file.",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("report_write_failed");
+			const memoryIndex = await readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8").catch(() => "");
+			expect(memoryIndex).not.toContain("valid index should roll back");
+			expect(memoryIndex).not.toContain("reportPath=");
+		});
+	});
 });

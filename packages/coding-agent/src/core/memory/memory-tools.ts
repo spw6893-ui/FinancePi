@@ -308,7 +308,27 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 				content: indexEntry,
 			});
 			if (result.success) {
-				await writeResearchReportFile(ctx.cwd, reportPath, params.content);
+				try {
+					await writeResearchReportFile(ctx.cwd, reportPath, params.content);
+				} catch (error) {
+					const rollback = await createStore(ctx, namespaces).write({
+						namespace: params.namespace,
+						target: params.target ?? "research",
+						action: "remove",
+						oldText: reportPath,
+					});
+					const message = error instanceof Error ? error.message : String(error);
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `memory_research_report: error report_write_failed reportPath=${reportPath} rollback=${rollback.success ? "success" : "failed"} error=${message}`,
+							},
+						],
+						details: { reportPath, memory: result, rollback, error: message },
+						isError: true,
+					};
+				}
 			}
 			return {
 				content: [

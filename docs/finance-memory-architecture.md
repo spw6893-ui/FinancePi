@@ -307,7 +307,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `summary` 必须短小，并为市场敏感内容包含 `asOf=` 或 `createdAt=`。
 - `content` 可以较长，但不进入 memory prompt；仍会扫描 secret、prompt-injection 和 invisible Unicode。
 - `sourcePaths` 必须是项目内相对路径。
-- compact memory index 写入失败时不落 `.pi/research` 文件，避免孤立 report。
+- compact memory index 写入失败时不落 `.pi/research` 文件；report 文件写入失败时会回滚 compact memory index。
 
 ## System Prompt Integration
 
@@ -565,7 +565,7 @@ interface MemoryProvider {
 - tool result compact，不再大 JSON 污染上下文。
 - 完整数据仍落 artifact，memory 只存摘要、偏好和路径。
 - 深度研究报告能落 `.pi/research/*.md`，同时 `RESEARCH.md` 只保留 compact index。
-- `memory_research_report` 会扫描 unsafe report 内容，且 index 失败时不留下孤立 report。
+- `memory_research_report` 会扫描 unsafe report 内容；index 失败时不留下孤立 report；report 写入失败时回滚 memory index。
 - Finance resource tools 能读取 `.pi/research/*.md` report path。
 - memory 文件不越过项目目录。
 - 单元测试覆盖读写、搜索、容量、安全和 finance namespace。
@@ -585,6 +585,7 @@ interface MemoryProvider {
 - 2026-06-21：增强 `memory_session_search`，补充 query coverage 排序和 snippet 输出。
 - 2026-06-21：增强 `memory_search`，补充 persistent memory 的 query coverage 排序和 snippet 输出。
 - 2026-06-21：补充 `memory_research_report` 的 report 内容安全扫描和无孤立文件写入规则。
+- 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

@@ -469,7 +469,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - `memory_research_report` 可生成 `.pi/research/*.md`。
 - `.pi/memory/<namespace>/RESEARCH.md` 只保存摘要、report path、symbols 和 source paths。
 - 后续模型通过 `memory_search` 找索引，再通过 finance resource tools 按需读取报告或 artifact。
-- Report 内容会经过 secret/prompt-injection/invisible Unicode 扫描；memory index 写入失败时不会留下孤立 report 文件。
+- Report 内容会经过 secret/prompt-injection/invisible Unicode 扫描；memory index 写入失败时不会留下孤立 report 文件；report 文件写入失败时会回滚 compact memory index。
 
 后续目标：
 
@@ -492,7 +492,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - 工具结果保持 compact，完整数据落 artifact。
 - 长研究内容能通过 `memory_research_report` 落 `.pi/research/*.md`，memory 只保存 compact index。
-- `memory_research_report` 不允许 secret/prompt-injection report 内容，且 index 失败时不留下孤立 report。
+- `memory_research_report` 不允许 secret/prompt-injection report 内容；index 失败时不留下孤立 report；report 写入失败时回滚 memory index。
 - Finance resource tools 能读取 `.pi/research/*.md` report path。
 - Memory 不保存 secret、大 JSON、raw news 或 raw price dump。
 - Finance extension 不再手写 memory tools/prompt，core 自动注入。
@@ -536,6 +536,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：增强 `memory_session_search` 设计说明，补充相关性排序和 snippet。
 - 2026-06-21：增强 `memory_search` 设计说明，补充 persistent memory 的相关性排序和 snippet。
 - 2026-06-21：补充 `memory_research_report` 安全扫描和无孤立 report 写入规则。
+- 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

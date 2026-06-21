@@ -9,6 +9,7 @@
 - Added score and snippet output to session memory search, with query coverage ranking for more relevant local recall.
 - Added score and snippet output to persistent memory search, with query coverage ranking across memory targets.
 - Added unsafe-content scanning and orphan-file prevention for core memory research reports.
+- Added compact memory index rollback when core memory research report file writes fail.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
 - Changed Pi's default prompt and built-in workflow to finance-first US equity/ETF research with sourced finance tools enabled by default.
 
