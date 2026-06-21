@@ -19,13 +19,11 @@ import type {
 import { buildTechnicalSnapshot, FinanceClient, FinanceMcpClient } from "@earendil-works/pi-finance";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "./extensions/types.ts";
-import { createMemoryTools } from "./memory/memory-tools.ts";
 import { createFinanceMemoryNamespace } from "./memory/namespace-registry.ts";
 
 const client = new FinanceClient();
 const mcpClient = new FinanceMcpClient();
 const financeMemoryNamespace = createFinanceMemoryNamespace();
-const financeMemoryTools = createMemoryTools([financeMemoryNamespace]);
 const FINANCE_RESOURCE_DOC_NAMES = new Set([
 	"AGENTS.md",
 	"AGENTS.override.md",
@@ -1225,9 +1223,6 @@ export default function financeAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool(mcpServersTool);
 	pi.registerTool(mcpListToolsTool);
 	pi.registerTool(mcpCallTool);
-	for (const tool of financeMemoryTools) {
-		pi.registerTool(tool);
-	}
 
 	pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt + financePrompt }));
 }

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { AgentSession } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import financeAgentExtension from "../../src/core/finance-agent-extension.ts";
+import { createFinanceMemoryNamespace } from "../../src/core/memory/namespace-registry.ts";
 import { ModelRegistry } from "../../src/core/model-registry.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -30,6 +31,30 @@ async function withTempCwd<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 	}
 }
 
+function createMemoryTestSession(
+	cwd: string,
+	extensionsResult: Awaited<ReturnType<typeof createTestExtensionsResult>>,
+) {
+	const authStorage = AuthStorage.inMemory();
+	authStorage.setRuntimeApiKey("anthropic", "test-key");
+	return new AgentSession({
+		agent: new Agent({
+			getApiKey: () => "test-key",
+			initialState: {
+				model: getModel("anthropic", "claude-sonnet-4-5")!,
+				systemPrompt: "base prompt",
+				tools: [],
+			},
+		}),
+		sessionManager: SessionManager.inMemory(),
+		settingsManager: SettingsManager.inMemory(),
+		cwd,
+		modelRegistry: ModelRegistry.inMemory(authStorage),
+		resourceLoader: createTestResourceLoader({ extensionsResult }),
+		baseToolsOverride: {},
+	});
+}
+
 describe("finance memory namespace", () => {
 	it("registers generic memory tools with finance namespace available", async () => {
 		await withTempCwd(async (cwd) => {
@@ -37,13 +62,14 @@ describe("finance memory namespace", () => {
 			const extension = result.extensions[0];
 
 			expect(extension?.memoryNamespaces.map((namespace) => namespace.namespace)).toEqual(["finance"]);
-			expect(extension?.tools.has("memory_list")).toBe(true);
-			expect(extension?.tools.has("memory_read")).toBe(true);
-			expect(extension?.tools.has("memory_search")).toBe(true);
-			expect(extension?.tools.has("memory_write")).toBe(true);
+			expect(extension?.tools.has("memory_list")).toBe(false);
+			expect(extension?.tools.has("memory_read")).toBe(false);
+			expect(extension?.tools.has("memory_search")).toBe(false);
+			expect(extension?.tools.has("memory_write")).toBe(false);
 
-			const write = extension?.tools.get("memory_write")?.definition;
-			const search = extension?.tools.get("memory_search")?.definition;
+			const session = createMemoryTestSession(cwd, result);
+			const write = session.getToolDefinition("memory_write");
+			const search = session.getToolDefinition("memory_search");
 			const writeResult = await write?.execute(
 				"write",
 				{
@@ -66,6 +92,7 @@ describe("finance memory namespace", () => {
 
 			expect(getText(writeResult)).toContain("memory_write: success");
 			expect(getText(searchResult)).toContain(".pi/memory/finance/WATCHLIST.md:1");
+			session.dispose();
 		});
 	});
 
@@ -74,30 +101,48 @@ describe("finance memory namespace", () => {
 			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
 			await writeFile(join(cwd, ".pi/memory/finance/USER.md"), "用户偏好 crypto 使用 Binance public data。");
 			const result = await createTestExtensionsResult([{ factory: financeAgentExtension, path: "<finance>" }], cwd);
-			const authStorage = AuthStorage.inMemory();
-			authStorage.setRuntimeApiKey("anthropic", "test-key");
-			const session = new AgentSession({
-				agent: new Agent({
-					getApiKey: () => "test-key",
-					initialState: {
-						model: getModel("anthropic", "claude-sonnet-4-5")!,
-						systemPrompt: "base prompt",
-						tools: [],
-					},
-				}),
-				sessionManager: SessionManager.inMemory(),
-				settingsManager: SettingsManager.inMemory(),
-				cwd,
-				modelRegistry: ModelRegistry.inMemory(authStorage),
-				resourceLoader: createTestResourceLoader({ extensionsResult: result }),
-				baseToolsOverride: {},
-			});
+			const session = createMemoryTestSession(cwd, result);
 
 			try {
 				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
 				expect(session.systemPrompt).toContain("用户偏好 crypto 使用 Binance public data");
 				expect(session.systemPrompt).toContain("Use namespace=finance");
 				expect(session.systemPrompt).toContain("memory_search");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
+	it("exposes memory tools from core when an extension only registers a namespace", async () => {
+		await withTempCwd(async (cwd) => {
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-only>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				const allToolNames = session.getAllTools().map((tool) => tool.name);
+				expect(allToolNames).toContain("memory_list");
+				expect(allToolNames).toContain("memory_read");
+				expect(allToolNames).toContain("memory_search");
+				expect(allToolNames).toContain("memory_write");
+				expect(session.getActiveToolNames()).toEqual([
+					"memory_list",
+					"memory_read",
+					"memory_search",
+					"memory_write",
+				]);
+				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
+				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
 			} finally {
 				session.dispose();
 			}

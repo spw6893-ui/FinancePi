@@ -84,6 +84,7 @@ import {
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
 import { buildMemorySystemPromptBlock } from "./memory/memory-context.ts";
 import { MemoryStore } from "./memory/memory-store.ts";
+import { createMemoryTools } from "./memory/memory-tools.ts";
 import type { MemoryNamespaceConfig } from "./memory/memory-types.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { ModelRegistry } from "./model-registry.ts";
@@ -2408,8 +2409,17 @@ export class AgentSession {
 		const isAllowedTool = (name: string): boolean =>
 			(!allowedToolNames || allowedToolNames.has(name)) && !excludedToolNames?.has(name);
 
+		const memoryNamespaces = this._getMemoryNamespaces();
+		const memoryTools =
+			memoryNamespaces.length > 0
+				? createMemoryTools(memoryNamespaces).map((definition) => ({
+						definition,
+						sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
+					}))
+				: [];
 		const registeredTools = this._extensionRunner.getAllRegisteredTools();
 		const allCustomTools = [
+			...memoryTools,
 			...registeredTools,
 			...this._customTools.map((definition) => ({
 				definition,
