@@ -132,4 +132,85 @@ describe("MemoryManager", () => {
 			]);
 		});
 	});
+
+	it("isolates failing providers from available provider lifecycle hooks", async () => {
+		await withTempCwd(async (cwd) => {
+			const events: string[] = [];
+			const failingInit: MemoryProvider = {
+				name: "failing-init",
+				isAvailable: () => true,
+				initialize: async () => {
+					throw new Error("init failed");
+				},
+			};
+			const failingRuntime: MemoryProvider = {
+				name: "failing-runtime",
+				isAvailable: () => true,
+				initialize: async () => {
+					events.push("bad-init-called");
+				},
+				systemPromptBlock: async () => {
+					throw new Error("prompt failed");
+				},
+				prefetch: async () => {
+					throw new Error("prefetch failed");
+				},
+				syncTurn: async () => {
+					throw new Error("sync failed");
+				},
+				onSessionEnd: async () => {
+					throw new Error("end failed");
+				},
+				shutdown: async () => {
+					throw new Error("shutdown failed");
+				},
+			};
+			const healthy: MemoryProvider = {
+				name: "healthy",
+				isAvailable: () => true,
+				initialize: async () => {
+					events.push("healthy-init");
+				},
+				systemPromptBlock: async () => "HEALTHY MEMORY",
+				prefetch: async (query) => `healthy:${query}`,
+				syncTurn: async () => {
+					events.push("healthy-sync");
+				},
+				onSessionEnd: async () => {
+					events.push("healthy-end");
+				},
+				shutdown: async () => {
+					events.push("healthy-shutdown");
+				},
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [failingInit, failingRuntime, healthy],
+			});
+
+			await expect(manager.initializeProviders({ sessionId: "s1" })).resolves.toBeUndefined();
+			await expect(manager.buildProviderSystemPromptBlock()).resolves.toBe("HEALTHY MEMORY");
+			await expect(manager.prefetch("NVDA")).resolves.toBe("healthy:NVDA");
+			await expect(manager.syncTurn({ user: "u", assistant: "a" })).resolves.toBeUndefined();
+			await expect(manager.onSessionEnd([], { sessionId: "s1" })).resolves.toBeUndefined();
+			await expect(manager.shutdownProviders()).resolves.toBeUndefined();
+
+			expect(manager.getAvailableProviders().map((provider) => provider.name)).toEqual([
+				"failing-runtime",
+				"healthy",
+			]);
+			expect(events).toEqual(["bad-init-called", "healthy-init", "healthy-sync", "healthy-end", "healthy-shutdown"]);
+			expect(
+				manager.getProviderErrors().map((error) => `${error.provider}:${error.phase}:${error.message}`),
+			).toEqual([
+				"failing-init:initialize:init failed",
+				"failing-runtime:systemPromptBlock:prompt failed",
+				"failing-runtime:prefetch:prefetch failed",
+				"failing-runtime:syncTurn:sync failed",
+				"failing-runtime:onSessionEnd:end failed",
+				"failing-runtime:shutdown:shutdown failed",
+			]);
+		});
+	});
 });

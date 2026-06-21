@@ -333,6 +333,7 @@ interface MemoryProvider {
 - Provider 只能 additive，不能覆盖 core memory rules。
 - Provider prompt block 追加在 core prompt block 之后。
 - 外部 provider 不应绕过 secret 扫描、时间戳约束和 market freshness 规则。
+- 单个 provider 在 `isAvailable`、`initialize`、`systemPromptBlock`、`prefetch`、`syncTurn`、`onSessionEnd` 或 `shutdown` 阶段失败时，只记录 provider error，不中断其他 provider 或主 agent 流程。
 
 ## Extension Integration
 
@@ -508,6 +509,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 外部 memory provider 能在已完成 user/assistant turn 后收到 `syncTurn()`。
 - 外部 memory provider 能在 session runtime teardown 时收到 `onSessionEnd()`，再执行 `shutdown()`。
 - 外部 memory provider 自带工具能通过 `getToolDefinitions()/handleToolCall()` 暴露给模型。
+- 外部 memory provider 单点失败不会拖垮主 agent 或其他 provider，错误可从 `MemoryManager.getProviderErrors()` 审计。
 - 模型能用 `memory_session_search` 召回当前项目历史 session 的 compact 讨论片段。
 - `memory_session_search` 返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - 单元测试覆盖 store、tools、context、manager、public API 和 finance namespace。
@@ -546,6 +548,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：新增 `memory_audit` 设计说明，用于 compact memory health/capacity 审计。
 - 2026-06-21：新增 `memory_compact` 设计说明，用于基于已读条目数的安全压缩写回。
+- 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮主 agent。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

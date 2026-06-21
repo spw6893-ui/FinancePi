@@ -35,6 +35,12 @@ export interface MemoryProviderTool {
 	parameters: TSchema;
 }
 
+export interface MemoryProviderError {
+	provider: string;
+	phase: "isAvailable" | "initialize" | "systemPromptBlock" | "prefetch" | "syncTurn" | "onSessionEnd" | "shutdown";
+	message: string;
+}
+
 export interface MemoryProvider {
 	name: string;
 	isAvailable(): boolean | Promise<boolean>;

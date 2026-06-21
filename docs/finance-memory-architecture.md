@@ -523,6 +523,7 @@ Finance extension 只负责：
 - 每轮 prompt 前调用 provider `prefetch()`，把 compact recall 临时追加到当前 turn system prompt，且不写入 session。
 - Session runtime teardown 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
 - Provider 可通过 `getToolDefinitions()` / `handleToolCall()` 暴露自带 memory tools，由 core 注册到当前 AgentSession。
+- Provider lifecycle 各阶段失败只记录 provider error，不中断主 agent 或其他 provider。
 
 ### Phase 3：Session search
 
@@ -592,6 +593,7 @@ interface MemoryProvider {
 - `memory_research_report` 会扫描 unsafe report 内容；index 失败时不留下孤立 report；report 写入失败时回滚 memory index。
 - Finance resource tools 能读取 `.pi/research/*.md` report path。
 - memory 文件不越过项目目录。
+- 外部 memory provider 单点失败不会拖垮 FinancePi 主流程，错误可从 `MemoryManager.getProviderErrors()` 审计。
 - 单元测试覆盖读写、搜索、容量、安全和 finance namespace。
 
 ## Related
@@ -612,6 +614,7 @@ interface MemoryProvider {
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：新增 `memory_audit`，用于 compact memory health/capacity 审计。
 - 2026-06-21：新增 `memory_compact`，用于安全压缩 long-lived memory target。
+- 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮 FinancePi。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。
