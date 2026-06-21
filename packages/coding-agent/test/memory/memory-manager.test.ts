@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { MemoryManager } from "../../src/core/memory/memory-manager.ts";
+import type { MemoryProvider } from "../../src/core/memory/memory-provider.ts";
 import type { MemoryNamespaceConfig } from "../../src/core/memory/memory-types.ts";
 
 function namespace(name = "finance"): MemoryNamespaceConfig {
@@ -65,6 +66,66 @@ describe("MemoryManager", () => {
 			expect(manager.buildSystemPromptBlock()).toContain("CORE MEMORY CONTEXT");
 			expect(manager.buildSystemPromptBlock()).toContain("用户偏好免费公开数据源");
 			expect(manager.getStore().list({ namespace: "finance" }).entries).toHaveLength(2);
+		});
+	});
+
+	it("runs available provider lifecycle hooks through the core facade", async () => {
+		await withTempCwd(async (cwd) => {
+			const events: string[] = [];
+			const provider: MemoryProvider = {
+				name: "external",
+				isAvailable: async () => true,
+				initialize: async (ctx) => {
+					events.push(`init:${ctx.cwd}:${ctx.namespace ?? "none"}`);
+				},
+				systemPromptBlock: async () => "EXTERNAL MEMORY BLOCK",
+				prefetch: async (query, ctx) => {
+					events.push(`prefetch:${query}:${ctx.namespace ?? "none"}`);
+					return `recall:${query}`;
+				},
+				syncTurn: async (turn, ctx) => {
+					events.push(`sync:${turn.user}->${turn.assistant}:${ctx.sessionId ?? "none"}`);
+				},
+				onSessionEnd: async (_messages, ctx) => {
+					events.push(`end:${ctx.sessionId ?? "none"}`);
+				},
+				shutdown: async () => {
+					events.push("shutdown");
+				},
+			};
+			const unavailable: MemoryProvider = {
+				name: "unavailable",
+				isAvailable: () => false,
+				initialize: async () => {
+					events.push("unavailable-init");
+				},
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [provider, unavailable],
+			});
+
+			await manager.initializeProviders({ sessionId: "s1", namespace: "finance" });
+			const promptBlock = await manager.buildProviderSystemPromptBlock();
+			const prefetch = await manager.prefetch("NVDA", { namespace: "finance" });
+			await manager.syncTurn(
+				{ user: "remember NVDA", assistant: "saved" },
+				{ sessionId: "s1", namespace: "finance" },
+			);
+			await manager.onSessionEnd([], { sessionId: "s1", namespace: "finance" });
+			await manager.shutdownProviders();
+
+			expect(manager.getAvailableProviders().map((item) => item.name)).toEqual(["external"]);
+			expect(promptBlock).toBe("EXTERNAL MEMORY BLOCK");
+			expect(prefetch).toBe("recall:NVDA");
+			expect(events).toEqual([
+				`init:${cwd}:finance`,
+				"prefetch:NVDA:finance",
+				"sync:remember NVDA->saved:s1",
+				"end:s1",
+				"shutdown",
+			]);
 		});
 	});
 });
