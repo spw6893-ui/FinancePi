@@ -42,6 +42,21 @@
 - Finance market continuation：`packages/coding-agent/src/core/agent-session.ts`
 - 测试：`packages/coding-agent/test/memory/*`、`packages/coding-agent/test/finance/finance-memory-namespace.test.ts`
 
+## Architecture Decision
+
+采用四层 memory 作为 FinancePi 的 core-level 记忆结构：
+
+| 层 | 归属 | 默认召回 | 说明 |
+|---|---|---|---|
+| session memory | Pi session manager | continue/resume/compaction | 保存当前会话工作状态，不作为长期事实库 |
+| user memory | `.pi/memory/finance/USER.md` | 短 snapshot | 保存稳定偏好、数据源偏好、输出偏好 |
+| research memory | `.pi/memory/finance/{WATCHLIST,SYMBOL_NOTES,RESEARCH}.md` | search/read | 保存标的 thesis、研究摘要、artifact path |
+| long-term memory | `.pi/memory/finance/{MEMORY,LONG_TERM}.md` | summary + search/read | 保存长期流程规则和 agent 操作经验 |
+
+这层次是合适的：金融分析需要严格区分“现在的数据”和“过去的记忆”。行情、新闻、财报、技术面继续走 finance/crypto/web/artifact；memory 只给模型提供偏好、研究线索和工作流经验，避免一启动就把大量 JSON/CSV/旧结论喂给模型。
+
+Hermes-style provider 不替代本地 memory，而是作为可插拔 recall/sync 层：core 负责工具注册、prompt 拼接、生命周期和安全边界；provider 负责外部索引或长期记忆服务。
+
 ## Design Goals
 
 1. **Core 化**
@@ -427,9 +442,10 @@ AgentSession 在构建 system prompt 时：
 1. 从已加载 extensions 收集 memory namespaces。
 2. 创建 `MemoryManager({ cwd, namespaces, providers })`。
 3. 初始化可用 provider。
-4. 调用 `buildMemorySystemPromptBlock()`。
-5. 追加 provider 的 system prompt block。
-6. 把短 memory block 注入基础 system prompt。
+4. 注册 core memory tools 和 provider 自带 memory tools。
+5. 调用 `buildMemorySystemPromptBlock()`。
+6. 追加 provider 的 system prompt block。
+7. 把短 memory block 注入基础 system prompt。
 
 Finance extension 只负责：
 
@@ -464,6 +480,7 @@ Finance extension 只负责：
 - AgentSession 初始化 provider 并追加 provider prompt block。
 - 每轮 prompt 前调用 provider `prefetch()`，把 compact recall 临时追加到当前 turn system prompt，且不写入 session。
 - Session runtime teardown 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
+- Provider 可通过 `getToolDefinitions()` / `handleToolCall()` 暴露自带 memory tools，由 core 注册到当前 AgentSession。
 
 ### Phase 3：Session search
 
@@ -494,10 +511,16 @@ Finance extension 只负责：
 
 ```ts
 interface MemoryProvider {
-  initialize(): Promise<void>;
-  prefetch(query: string): Promise<unknown>;
-  search(query: string): Promise<unknown>;
-  write(entry: unknown): Promise<void>;
+  name: string;
+  isAvailable(): boolean | Promise<boolean>;
+  initialize(ctx): Promise<void>;
+  systemPromptBlock?(): Promise<string>;
+  prefetch?(query, ctx): Promise<string>;
+  syncTurn?(turn, ctx): Promise<void>;
+  onSessionEnd?(messages, ctx): Promise<void>;
+  getToolDefinitions?(): MemoryProviderTool[];
+  handleToolCall?(toolName, args): Promise<unknown>;
+  shutdown?(): Promise<void>;
 }
 ```
 
@@ -529,6 +552,7 @@ interface MemoryProvider {
 
 ## Changelog
 
+- 2026-06-21：补充四层 memory 架构决策和 provider 自带工具注册路径。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

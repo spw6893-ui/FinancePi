@@ -9,7 +9,7 @@ import type {
 	MemoryTurn,
 } from "./memory-provider.ts";
 import { MemoryStore } from "./memory-store.ts";
-import { createMemoryTools } from "./memory-tools.ts";
+import { createMemoryProviderTools, createMemoryTools } from "./memory-tools.ts";
 import type { MemoryNamespaceConfig } from "./memory-types.ts";
 
 export interface MemoryManagerOptions {
@@ -46,6 +46,10 @@ export class MemoryManager {
 
 	createTools() {
 		return createMemoryTools(this.namespaces);
+	}
+
+	createProviderTools() {
+		return createMemoryProviderTools(this.getAvailableProviders());
 	}
 
 	buildSystemPromptBlock(): string {

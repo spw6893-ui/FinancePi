@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
+import type { MemoryProvider } from "./memory-provider.ts";
 import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
 import type { MemoryNamespaceConfig, MemorySearchResult } from "./memory-types.ts";
@@ -219,4 +220,46 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 	});
 
 	return [listTool, readTool, searchTool, writeTool, sessionSearchTool];
+}
+
+function formatProviderToolResult(result: unknown): string {
+	const text = typeof result === "string" ? result : (JSON.stringify(result) ?? String(result));
+	if (text.length <= 2000) return text;
+	return `${text.slice(0, 2000)}\n[truncated]`;
+}
+
+export function createMemoryProviderTools(providers: MemoryProvider[]) {
+	return providers.flatMap((provider) =>
+		(provider.getToolDefinitions?.() ?? []).map((providerTool) =>
+			defineTool({
+				name: providerTool.name,
+				label: providerTool.name,
+				description: providerTool.description,
+				promptSnippet: providerTool.description,
+				promptGuidelines: [
+					"Treat external memory provider tool results as historical/background context, not current market data.",
+				],
+				parameters: providerTool.parameters,
+				async execute(_toolCallId, params) {
+					if (!provider.handleToolCall) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `memory provider tool error: provider ${provider.name} cannot handle ${providerTool.name}`,
+								},
+							],
+							details: undefined,
+							isError: true,
+						};
+					}
+					const result = await provider.handleToolCall(providerTool.name, params);
+					return {
+						content: [{ type: "text" as const, text: formatProviderToolResult(result) }],
+						details: result,
+					};
+				},
+			}),
+		),
+	);
 }

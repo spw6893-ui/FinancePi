@@ -80,6 +80,17 @@ FinancePi 已经把完整数据写入 artifact：
 
 artifact 是证据层，不是记忆层。它保存行情、K 线、新闻、SEC facts、网页正文等可复查资料。Memory 只保存以后值得召回的摘要、偏好、研究索引和 artifact path。
 
+## Architecture Decision
+
+当前采用四层 memory，而不是把所有历史统一塞进一个长期记忆池：
+
+1. `session memory`：Pi 已有的 JSONL/compaction/continue 能力，只负责当前会话连续性。
+2. `user memory`：稳定用户偏好，允许短小条目常驻 prompt。
+3. `domain/research memory`：标的、主题、研究摘要和 artifact path，默认 search-only。
+4. `long-term/procedural memory`：agent 工作流经验，允许短规则摘要注入，复杂内容按需搜索。
+
+这个分层适合 FinancePi：它把“当前事实”“用户偏好”“历史研究”“工作流经验”分开，避免旧行情、新闻列表或大 JSON 污染分析上下文。Core 只提供 memory substrate；Finance namespace 只是第一个使用方。
+
 ## Design Goals
 
 1. **Core-first**
@@ -303,6 +314,8 @@ interface MemoryProvider {
   prefetch?(query, ctx): Promise<string>;
   syncTurn?(turn, ctx): Promise<void>;
   onSessionEnd?(messages, ctx): Promise<void>;
+  getToolDefinitions?(): MemoryProviderTool[];
+  handleToolCall?(toolName, args): Promise<unknown>;
   shutdown?(): Promise<void>;
 }
 ```
@@ -333,6 +346,7 @@ registerMemoryProvider(provider)
 7. 每轮 prompt 发给 provider 前，`AgentSession` 会调用 provider `prefetch()`，把 compact recall 作为本轮临时 system prompt 追加。
 8. 普通 assistant turn 完成后，`AgentSession` 将最近的 user/assistant 文本同步给已初始化 provider 的 `syncTurn()`。
 9. Session runtime 关闭、切换、新建、恢复或 fork 旧 session 前，会调用 provider 的 `onSessionEnd()`，随后 `shutdown()`。
+10. Provider 可通过 `getToolDefinitions()` 暴露自有 memory tools，core 会包装并注册给当前 AgentSession。
 
 这让 memory 成为 core 能力，而不是某个 extension 手动拼 prompt 的临时能力。
 
@@ -470,6 +484,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 外部 memory provider 的 `prefetch()` 结果能进入当前 turn system prompt，且不写入 session。
 - 外部 memory provider 能在已完成 user/assistant turn 后收到 `syncTurn()`。
 - 外部 memory provider 能在 session runtime teardown 时收到 `onSessionEnd()`，再执行 `shutdown()`。
+- 外部 memory provider 自带工具能通过 `getToolDefinitions()/handleToolCall()` 暴露给模型。
 - 模型能用 `memory_session_search` 召回当前项目历史 session 的 compact 讨论片段。
 - 单元测试覆盖 store、tools、context、manager、public API 和 finance namespace。
 
@@ -499,6 +514,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 
 ## Changelog
 
+- 2026-06-21：补充 provider 自带工具通过 core 注册到 AgentSession 的设计说明。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

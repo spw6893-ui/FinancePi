@@ -2321,6 +2321,7 @@ export class AgentSession {
 		const memoryManager = this._getMemoryManager();
 		await memoryManager.initializeProviders({ sessionId: this.sessionId });
 		this._memoryProviderSystemPromptBlock = await memoryManager.buildProviderSystemPromptBlock();
+		this._refreshToolRegistry();
 		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
 		this.agent.state.systemPrompt = this._baseSystemPrompt;
 	}
@@ -2532,9 +2533,14 @@ export class AgentSession {
 					sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
 				}))
 			: [];
+		const memoryProviderTools = memoryManager.createProviderTools().map((definition) => ({
+			definition,
+			sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
+		}));
 		const registeredTools = this._extensionRunner.getAllRegisteredTools();
 		const allCustomTools = [
 			...memoryTools,
+			...memoryProviderTools,
 			...registeredTools,
 			...this._customTools.map((definition) => ({
 				definition,

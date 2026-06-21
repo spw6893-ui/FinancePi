@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
 import { AgentSession } from "../../src/core/agent-session.ts";
@@ -223,6 +224,51 @@ describe("finance memory namespace", () => {
 
 			session.dispose();
 			expect(events).toEqual([`init:${session.sessionId}`, "shutdown"]);
+		});
+	});
+
+	it("exposes available memory provider tools through AgentSession", async () => {
+		await withTempCwd(async (cwd) => {
+			const provider: MemoryProvider = {
+				name: "provider-tools",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_external_lookup",
+						description: "Lookup external provider memory.",
+						parameters: Type.Object({ query: Type.String() }),
+					},
+				],
+				handleToolCall: async (toolName, args) => {
+					const query = typeof args === "object" && args !== null && "query" in args ? String(args.query) : "";
+					return `${toolName}:${query}`;
+				},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider-tools>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(provider);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				await session.bindExtensions({});
+				const tool = session.getToolDefinition("memory_external_lookup");
+				const output = await tool?.execute("lookup", { query: "NVDA" }, undefined, undefined, { cwd } as never);
+
+				expect(session.getActiveToolNames()).toContain("memory_external_lookup");
+				expect(getText(output)).toContain("memory_external_lookup:NVDA");
+			} finally {
+				session.dispose();
+			}
 		});
 	});
 

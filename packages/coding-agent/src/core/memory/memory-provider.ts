@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { TSchema } from "typebox";
 
 export interface MemoryProviderInitContext {
 	cwd: string;
@@ -31,7 +32,7 @@ export interface MemorySessionContext {
 export interface MemoryProviderTool {
 	name: string;
 	description: string;
-	parameters: unknown;
+	parameters: TSchema;
 }
 
 export interface MemoryProvider {
