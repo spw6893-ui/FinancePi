@@ -17,6 +17,9 @@ describe("finance agent extension", () => {
 		expect(extension?.tools.has("finance_symbol_context")).toBe(true);
 		expect(extension?.tools.has("finance_compare_symbols")).toBe(true);
 		expect(extension?.tools.has("finance_market_brief")).toBe(true);
+		expect(extension?.tools.has("finance_list_resources")).toBe(true);
+		expect(extension?.tools.has("finance_read_resource")).toBe(true);
+		expect(extension?.tools.has("finance_search_resources")).toBe(true);
 		expect(extension?.tools.has("finance_mcp_servers")).toBe(true);
 		expect(extension?.tools.has("finance_mcp_list_tools")).toBe(true);
 		expect(extension?.tools.has("finance_mcp_call_tool")).toBe(true);
