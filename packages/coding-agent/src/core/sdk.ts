@@ -23,9 +23,12 @@ import {
 	createEditTool,
 	createFindTool,
 	createGrepTool,
+	createListProjectDocsTool,
 	createLsTool,
 	createReadOnlyTools,
+	createReadProjectDocTool,
 	createReadTool,
+	createSearchProjectDocsTool,
 	createWriteTool,
 	type ToolName,
 	withFileMutationQueue,
@@ -53,15 +56,15 @@ export interface CreateAgentSessionOptions {
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write)
+	 * - "builtin": disable the default built-in tools
 	 *   but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
 	/**
 	 * Optional allowlist of tool names.
 	 *
-	 * When omitted, pi enables the default built-in tools (read, bash, edit, write)
-	 * and leaves extension/custom tools enabled unless `noTools` changes that default.
+	 * When omitted, pi enables the default built-in tools and leaves extension/custom
+	 * tools enabled unless `noTools` changes that default.
 	 * When provided, only the listed tool names are enabled.
 	 */
 	tools?: string[];
@@ -120,6 +123,9 @@ export {
 	createGrepTool,
 	createFindTool,
 	createLsTool,
+	createListProjectDocsTool,
+	createReadProjectDocTool,
+	createSearchProjectDocsTool,
 };
 
 // Helper Functions
@@ -241,7 +247,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = clampThinkingLevel(model, thinkingLevel) as ThinkingLevel;
 	}
 
-	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write"];
+	const defaultActiveToolNames: ToolName[] = [
+		"read",
+		"bash",
+		"edit",
+		"write",
+		"list_project_docs",
+		"read_project_doc",
+		"search_project_docs",
+	];
 	const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
 	const excludedToolNames = options.excludeTools;
 	const excludedToolNameSet = excludedToolNames ? new Set(excludedToolNames) : undefined;

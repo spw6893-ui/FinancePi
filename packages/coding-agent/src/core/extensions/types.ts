@@ -69,10 +69,13 @@ import type {
 	FindToolInput,
 	GrepToolDetails,
 	GrepToolInput,
+	ListProjectDocsInput,
 	LsToolDetails,
 	LsToolInput,
+	ReadProjectDocInput,
 	ReadToolDetails,
 	ReadToolInput,
+	SearchProjectDocsInput,
 	WriteToolInput,
 } from "../tools/index.ts";
 
@@ -843,6 +846,21 @@ export interface LsToolCallEvent extends ToolCallEventBase {
 	input: LsToolInput;
 }
 
+export interface ListProjectDocsToolCallEvent extends ToolCallEventBase {
+	toolName: "list_project_docs";
+	input: ListProjectDocsInput;
+}
+
+export interface ReadProjectDocToolCallEvent extends ToolCallEventBase {
+	toolName: "read_project_doc";
+	input: ReadProjectDocInput;
+}
+
+export interface SearchProjectDocsToolCallEvent extends ToolCallEventBase {
+	toolName: "search_project_docs";
+	input: SearchProjectDocsInput;
+}
+
 export interface CustomToolCallEvent extends ToolCallEventBase {
 	toolName: string;
 	input: Record<string, unknown>;
@@ -862,6 +880,9 @@ export type ToolCallEvent =
 	| GrepToolCallEvent
 	| FindToolCallEvent
 	| LsToolCallEvent
+	| ListProjectDocsToolCallEvent
+	| ReadProjectDocToolCallEvent
+	| SearchProjectDocsToolCallEvent
 	| CustomToolCallEvent;
 
 interface ToolResultEventBase {
@@ -907,6 +928,21 @@ export interface LsToolResultEvent extends ToolResultEventBase {
 	details: LsToolDetails | undefined;
 }
 
+export interface ListProjectDocsToolResultEvent extends ToolResultEventBase {
+	toolName: "list_project_docs";
+	details: undefined;
+}
+
+export interface ReadProjectDocToolResultEvent extends ToolResultEventBase {
+	toolName: "read_project_doc";
+	details: undefined;
+}
+
+export interface SearchProjectDocsToolResultEvent extends ToolResultEventBase {
+	toolName: "search_project_docs";
+	details: undefined;
+}
+
 export interface CustomToolResultEvent extends ToolResultEventBase {
 	toolName: string;
 	details: unknown;
@@ -921,6 +957,9 @@ export type ToolResultEvent =
 	| GrepToolResultEvent
 	| FindToolResultEvent
 	| LsToolResultEvent
+	| ListProjectDocsToolResultEvent
+	| ReadProjectDocToolResultEvent
+	| SearchProjectDocsToolResultEvent
 	| CustomToolResultEvent;
 
 // Type guards for ToolResultEvent
@@ -944,6 +983,15 @@ export function isFindToolResult(e: ToolResultEvent): e is FindToolResultEvent {
 }
 export function isLsToolResult(e: ToolResultEvent): e is LsToolResultEvent {
 	return e.toolName === "ls";
+}
+export function isListProjectDocsToolResult(e: ToolResultEvent): e is ListProjectDocsToolResultEvent {
+	return e.toolName === "list_project_docs";
+}
+export function isReadProjectDocToolResult(e: ToolResultEvent): e is ReadProjectDocToolResultEvent {
+	return e.toolName === "read_project_doc";
+}
+export function isSearchProjectDocsToolResult(e: ToolResultEvent): e is SearchProjectDocsToolResultEvent {
+	return e.toolName === "search_project_docs";
 }
 
 /**
@@ -973,6 +1021,18 @@ export function isToolCallEventType(toolName: "write", event: ToolCallEvent): ev
 export function isToolCallEventType(toolName: "grep", event: ToolCallEvent): event is GrepToolCallEvent;
 export function isToolCallEventType(toolName: "find", event: ToolCallEvent): event is FindToolCallEvent;
 export function isToolCallEventType(toolName: "ls", event: ToolCallEvent): event is LsToolCallEvent;
+export function isToolCallEventType(
+	toolName: "list_project_docs",
+	event: ToolCallEvent,
+): event is ListProjectDocsToolCallEvent;
+export function isToolCallEventType(
+	toolName: "read_project_doc",
+	event: ToolCallEvent,
+): event is ReadProjectDocToolCallEvent;
+export function isToolCallEventType(
+	toolName: "search_project_docs",
+	event: ToolCallEvent,
+): event is SearchProjectDocsToolCallEvent;
 export function isToolCallEventType<TName extends string, TInput extends Record<string, unknown>>(
 	toolName: TName,
 	event: ToolCallEvent,
