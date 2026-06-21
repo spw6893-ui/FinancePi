@@ -377,6 +377,51 @@ describe("finance memory namespace", () => {
 		});
 	});
 
+	it("records getToolDefinitions failures in memory provider audit", async () => {
+		await withTempCwd(async (cwd) => {
+			const broken: MemoryProvider = {
+				name: "broken-provider",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => {
+					throw new Error("tool definitions failed");
+				},
+			};
+			const healthy: MemoryProvider = {
+				name: "healthy-provider",
+				isAvailable: () => true,
+				initialize: async () => {},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider-tool-definitions>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(broken);
+							pi.registerMemoryProvider(healthy);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				await expect(session.bindExtensions({})).resolves.toBeUndefined();
+				const audit = session.getToolDefinition("memory_provider_audit");
+				const auditOutput = await audit?.execute("audit", {}, undefined, undefined, { cwd } as never);
+
+				expect(getText(auditOutput)).toContain("memory_provider_audit: configured=2 available=2 errors=1");
+				expect(getText(auditOutput)).toContain("error provider=broken-provider phase=getToolDefinitions");
+				expect(getText(auditOutput)).toContain("tool definitions failed");
+				expect(session.getActiveToolNames()).toContain("memory_provider_audit");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
 	it("keeps finance before_agent_start focused on finance prompt only", async () => {
 		await withTempCwd(async (cwd) => {
 			const result = await createTestExtensionsResult([{ factory: financeAgentExtension, path: "<finance>" }], cwd);

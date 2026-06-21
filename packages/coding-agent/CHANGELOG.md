@@ -14,7 +14,7 @@
 - Added `memory_provider_audit` for compact external memory provider state and error inspection.
 - Added `memory_compact` for safe persistent memory target compaction with stale entry-count protection.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
-- Changed external memory provider tool failures to return compact tool errors and appear in provider audit instead of interrupting the agent tool loop.
+- Changed external memory provider tool registration/execution failures to return compact failure paths and appear in provider audit instead of interrupting the agent tool loop.
 - Changed core memory prompt guidance to make explicit remember-write and audit/compact maintenance behavior available to the model.
 - Changed core memory provider lifecycle handling to isolate provider failures and retain provider error audit records.
 - Changed Pi's default prompt and built-in workflow to finance-first US equity/ETF research with sourced finance tools enabled by default.

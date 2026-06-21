@@ -54,7 +54,7 @@ export class MemoryManager {
 
 	createProviderTools() {
 		return createMemoryProviderTools(this.getAvailableProviders(), {
-			onProviderError: (provider, error) => this.recordProviderError(provider, "handleToolCall", error),
+			onProviderError: (provider, phase, error) => this.recordProviderError(provider, phase, error),
 		});
 	}
 

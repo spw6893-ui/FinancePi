@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
-import type { MemoryProvider } from "./memory-provider.ts";
+import type { MemoryProvider, MemoryProviderError } from "./memory-provider.ts";
 import { scanMemoryReportContent } from "./memory-security.ts";
 import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
@@ -416,10 +416,19 @@ function formatProviderToolResult(result: unknown): string {
 
 export function createMemoryProviderTools(
 	providers: MemoryProvider[],
-	options: { onProviderError?: (provider: MemoryProvider, error: unknown) => void } = {},
+	options: {
+		onProviderError?: (provider: MemoryProvider, phase: MemoryProviderError["phase"], error: unknown) => void;
+	} = {},
 ) {
-	return providers.flatMap((provider) =>
-		(provider.getToolDefinitions?.() ?? []).map((providerTool) =>
+	return providers.flatMap((provider) => {
+		let providerTools = [];
+		try {
+			providerTools = provider.getToolDefinitions?.() ?? [];
+		} catch (error) {
+			options.onProviderError?.(provider, "getToolDefinitions", error);
+			return [];
+		}
+		return providerTools.map((providerTool) =>
 			defineTool({
 				name: providerTool.name,
 				label: providerTool.name,
@@ -450,7 +459,7 @@ export function createMemoryProviderTools(
 						};
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
-						options.onProviderError?.(provider, error);
+						options.onProviderError?.(provider, "handleToolCall", error);
 						return {
 							content: [
 								{
@@ -464,6 +473,6 @@ export function createMemoryProviderTools(
 					}
 				},
 			}),
-		),
-	);
+		);
+	});
 }

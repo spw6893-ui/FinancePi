@@ -45,6 +45,7 @@ export interface MemoryProviderError {
 		| "syncTurn"
 		| "onSessionEnd"
 		| "shutdown"
+		| "getToolDefinitions"
 		| "handleToolCall";
 	message: string;
 }

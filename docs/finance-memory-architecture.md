@@ -539,7 +539,7 @@ Finance extension 只负责：
 - Session runtime teardown 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
 - Provider 可通过 `getToolDefinitions()` / `handleToolCall()` 暴露自带 memory tools，由 core 注册到当前 AgentSession。
 - Provider lifecycle 各阶段失败只记录 provider error，不中断主 agent 或其他 provider。
-- Provider 自带 tool 调用失败时返回 compact `isError`，不中断 FinancePi tool loop，并写入 provider audit 错误记录。
+- Provider 自带 tool 注册/调用失败时走 compact failure path，不中断 FinancePi tool loop，并写入 provider audit 错误记录。
 
 ### Phase 3：Session search
 
@@ -611,7 +611,7 @@ interface MemoryProvider {
 - Finance resource tools 能读取 `.pi/research/*.md` report path。
 - memory 文件不越过项目目录。
 - 外部 memory provider 单点失败不会拖垮 FinancePi 主流程，错误可从 `MemoryManager.getProviderErrors()` 审计。
-- 外部 memory provider 自带工具失败时返回 compact tool error，而不是中断 agent tool loop，并能被 `memory_provider_audit` 看到。
+- 外部 memory provider 自带工具注册或执行失败时走 compact failure path，而不是中断 agent tool loop，并能被 `memory_provider_audit` 看到。
 - 单元测试覆盖读写、搜索、容量、安全和 finance namespace。
 
 ## Related
@@ -635,7 +635,7 @@ interface MemoryProvider {
 - 2026-06-21：新增 `memory_compact`，用于安全压缩 long-lived memory target。
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮 FinancePi。
 - 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。
-- 2026-06-21：补充 provider 自带 memory tool 的错误隔离和 audit 记录规则。
+- 2026-06-21：补充 provider 自带 memory tool 注册/执行的错误隔离和 audit 记录规则。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。
