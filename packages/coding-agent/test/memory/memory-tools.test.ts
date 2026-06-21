@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { createMemoryTools } from "../../src/core/memory/memory-tools.ts";
 import type { MemoryNamespaceConfig } from "../../src/core/memory/memory-types.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
 
 function text(result: any): string {
 	return result.content
@@ -144,6 +145,89 @@ describe("memory tools", () => {
 			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md-1- before");
 			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md:2: NVDA thesis");
 			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md-3- after");
+		});
+	});
+
+	it("searches prior project session messages compactly", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({ role: "user", content: "上次聊 NVDA 的 Blackwell 供给约束", timestamp: 1 });
+			session.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "结论：关注毛利率和云厂商 capex，asOf=2026-06-20。" }],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 2,
+			});
+			const sessionSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_session_search");
+
+			const result = await sessionSearch?.execute(
+				"session-search",
+				{ query: "NVDA capex", sessionDir, limit: 3 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect(text(result)).toContain("memory_session_search: matches=2");
+			expect(text(result)).toContain("role=user");
+			expect(text(result)).toContain("Blackwell");
+			expect(text(result)).toContain("role=assistant");
+			expect(text(result)).toContain("capex");
+			expect(text(result)).not.toContain('"usage"');
+		});
+	});
+
+	it("truncates long prior session messages", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({
+				role: "user",
+				content: `NVDA ${"long-context ".repeat(200)}`,
+				timestamp: 1,
+			});
+			session.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "short answer" }],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 2,
+			});
+			const sessionSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_session_search");
+
+			const result = await sessionSearch?.execute(
+				"session-search",
+				{ query: "NVDA", sessionDir, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output.length).toBeLessThan(1200);
+			expect(output).toContain("[truncated]");
 		});
 	});
 });

@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
+import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
 import type { MemoryNamespaceConfig, MemorySearchResult } from "./memory-types.ts";
 
@@ -46,6 +47,19 @@ function formatSearch(result: MemorySearchResult): string {
 		for (const after of match.contextAfter) {
 			lines.push(`${match.relativePath}-${after.line}- ${after.text}`);
 		}
+	}
+	return lines.join("\n");
+}
+
+function formatSessionSearch(result: MemorySessionSearchResult): string {
+	if (result.matches.length === 0) return "memory_session_search: no matches";
+	const lines = [
+		`memory_session_search: matches=${result.matches.length}${result.truncated ? " truncated=true" : ""}`,
+	];
+	for (const match of result.matches) {
+		lines.push(
+			`${match.relativePath}:${match.line}: role=${match.role} session=${match.sessionId} at=${match.timestamp} text=${match.text}`,
+		);
 	}
 	return lines.join("\n");
 }
@@ -168,5 +182,41 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
-	return [listTool, readTool, searchTool, writeTool];
+	const sessionSearchTool = defineTool({
+		name: "memory_session_search",
+		label: "Memory Session Search",
+		description:
+			"Search prior project session messages for historical user questions and assistant conclusions. Use this for 'what did we discuss last time' recall; verify market-sensitive conclusions before reuse.",
+		promptSnippet: "Search prior project session memory",
+		promptGuidelines: [
+			"Use memory_session_search when the user asks about previous discussions, prior conclusions, or historical research context.",
+			"Treat session memory as historical context, not current market data; verify current facts with tools or artifacts.",
+		],
+		parameters: Type.Object({
+			query: Type.String({ description: "Search words, for example 'NVDA capex'." }),
+			limit: Type.Optional(Type.Number({ description: "Maximum matches to return, default 20." })),
+			ignoreCase: Type.Optional(Type.Boolean({ description: "Case-insensitive search, default true." })),
+			sessionDir: Type.Optional(
+				Type.String({
+					description:
+						"Optional session directory override for tests or custom session storage. Defaults to the current project's Pi session directory.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const result = await searchSessionMemory({
+				cwd: ctx.cwd,
+				query: params.query,
+				sessionDir: params.sessionDir,
+				limit: params.limit,
+				ignoreCase: params.ignoreCase,
+			});
+			return {
+				content: [{ type: "text" as const, text: formatSessionSearch(result) }],
+				details: undefined,
+			};
+		},
+	});
+
+	return [listTool, readTool, searchTool, writeTool, sessionSearchTool];
 }

@@ -137,13 +137,16 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_read");
 				expect(allToolNames).toContain("memory_search");
 				expect(allToolNames).toContain("memory_write");
+				expect(allToolNames).toContain("memory_session_search");
 				expect(session.getActiveToolNames()).toEqual([
 					"memory_list",
 					"memory_read",
 					"memory_search",
 					"memory_write",
+					"memory_session_search",
 				]);
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
+				expect(session.systemPrompt).toContain("- memory_session_search: Search prior project session memory");
 				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
 			} finally {
 				session.dispose();

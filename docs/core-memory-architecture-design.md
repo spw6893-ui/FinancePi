@@ -276,6 +276,7 @@ memory_list
 memory_read
 memory_search
 memory_write
+memory_session_search
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -285,6 +286,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_write` 成功时不回显全文，只返回 usage、entry count 和 message。
 - `memory_write` 失败时才返回 current entries，方便模型合并后重试。
 - 搜索和读取由模型主动决定，不在每轮自动 flush 全量 memory。
+- `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time 命中，不回显完整 session 或 provider payload。
 
 ### `MemoryProvider`
 
@@ -342,6 +344,7 @@ FinancePi 的目标 loop：
 4. 按需调用：
    - `memory_search`
    - `memory_read`
+   - `memory_session_search`
    - `finance_symbol_context`
    - `finance_compare_symbols`
    - `crypto_context`
@@ -426,6 +429,12 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 
 ### Phase A：SQLite FTS provider
 
+当前已具备轻量 session JSONL search：
+
+- `memory_session_search` 可搜索当前项目历史 session。
+- 搜索结果作为历史上下文，不是事实源。
+- 不需要 SQLite 或外部服务。
+
 目标：
 
 - 为 `.pi/memory` 和 session summary 建本地 FTS 索引。
@@ -457,6 +466,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - Finance extension 不再手写 memory tools/prompt，core 自动注入。
 - 外部 memory provider 可以注册、初始化并追加 prompt block。
 - 外部 memory provider 能在已完成 user/assistant turn 后收到 `syncTurn()`。
+- 模型能用 `memory_session_search` 召回当前项目历史 session 的 compact 讨论片段。
 - 单元测试覆盖 store、tools、context、manager、public API 和 finance namespace。
 
 ## Evidence
@@ -465,6 +475,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 本地文件 store：`packages/coding-agent/src/core/memory/memory-store.ts`
 - 写入安全扫描：`packages/coding-agent/src/core/memory/memory-security.ts`
 - Core tools：`packages/coding-agent/src/core/memory/memory-tools.ts`
+- Session memory search：`packages/coding-agent/src/core/memory/memory-session-search.ts`
 - Prompt block：`packages/coding-agent/src/core/memory/memory-context.ts`
 - Facade/provider lifecycle：`packages/coding-agent/src/core/memory/memory-manager.ts`
 - Provider 接口：`packages/coding-agent/src/core/memory/memory-provider.ts`
@@ -485,4 +496,5 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 ## Changelog
 
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
+- 2026-06-21：新增 `memory_session_search` 设计说明，用于当前项目历史 session 召回。
 - 2026-06-21：新增 core memory architecture design，整理 Pi core、Finance namespace 和 Hermes-style provider 的一体化设计。

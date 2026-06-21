@@ -213,6 +213,7 @@ memory_list
 memory_read
 memory_search
 memory_write
+memory_session_search
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -261,6 +262,17 @@ Finance 使用时固定 `namespace="finance"`。
 - 成功只返回 usage、entry count、message。
 - 失败才返回 current entries 供模型合并。
 - 不保存 raw price、raw news、大工具输出、secrets、unsourced claims。
+
+### `memory_session_search`
+
+搜索当前项目历史 session 消息。
+
+用途：
+
+- 用户问“我们上次聊 NVDA 说了什么？”时召回历史讨论。
+- 查 prior conclusion、历史研究上下文、用户此前口头偏好。
+- 只返回 compact role/text/path/time 命中，不回显完整 session。
+- 搜索结果仍是历史上下文，不能当当前市场事实。
 
 ## System Prompt Integration
 
@@ -447,17 +459,22 @@ Finance extension 只负责：
 - 新增 extension API：`registerMemoryNamespace`。
 - AgentSession 统一注入 memory block。
 - Finance extension 不再手写 memory prompt 拼接。
-- Core 自动暴露 `memory_list/read/search/write`。
+- Core 自动暴露 `memory_list/read/search/write/session_search` 对应的 `memory_*` 工具，包括 `memory_session_search`。
 - 新增 extension API：`registerMemoryProvider`。
 - AgentSession 初始化 provider 并追加 provider prompt block。
 
 ### Phase 3：Session search
 
-借鉴 Hermes SQLite FTS5 思路：
+已覆盖轻量 MVP：
 
-- 对历史 session 建索引。
+- `memory_session_search` 搜索当前项目历史 session JSONL。
 - 支持“我们上次聊 NVDA 说了什么？”。
 - 搜索结果仍作为候选上下文，不自动当事实。
+
+后续可继续借鉴 Hermes SQLite FTS5 思路：
+
+- 对历史 session 建索引。
+- 增加更强排序、snippet 和跨项目召回。
 
 ### Phase 4：Research notes
 
@@ -510,5 +527,6 @@ interface MemoryProvider {
 
 ## Changelog
 
+- 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。
 - 2026-06-21：更新 core integration 状态，补充 memory provider lifecycle 和 core 自动工具注册。
 - 2026-06-21：新增 FinancePi memory architecture 设计文档，基于当前 core memory MVP、Finance namespace 和 Hermes-style 分层记忆方案整理。

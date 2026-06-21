@@ -175,6 +175,12 @@ export type {
 	MemorySyncContext,
 	MemoryTurn,
 } from "./core/memory/memory-provider.ts";
+export {
+	type MemorySessionSearchMatch,
+	type MemorySessionSearchOptions,
+	type MemorySessionSearchResult,
+	searchSessionMemory,
+} from "./core/memory/memory-session-search.ts";
 export { MEMORY_ENTRY_DELIMITER, MemoryStore } from "./core/memory/memory-store.ts";
 export { createMemoryTools } from "./core/memory/memory-tools.ts";
 export type {

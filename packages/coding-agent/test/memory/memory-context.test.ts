@@ -55,6 +55,7 @@ describe("buildMemorySystemPromptBlock", () => {
 
 			expect(block).toContain("CORE MEMORY CONTEXT");
 			expect(block).toContain("Use namespace=finance");
+			expect(block).toContain("Use memory_session_search");
 			expect(block).toContain("finance/user");
 			expect(block).toContain("用户偏好免费公开数据源");
 			expect(block).not.toContain("old research note");
