@@ -86,8 +86,6 @@ export type {
 	InputEventResult,
 	InputSource,
 	KeybindingsManager,
-	ListProjectDocsToolCallEvent,
-	ListProjectDocsToolResultEvent,
 	LoadExtensionsResult,
 	LsToolCallEvent,
 	LsToolResultEvent,
@@ -108,8 +106,6 @@ export type {
 	// Provider Registration
 	ProviderConfig,
 	ProviderModelConfig,
-	ReadProjectDocToolCallEvent,
-	ReadProjectDocToolResultEvent,
 	ReadToolCallEvent,
 	ReadToolResultEvent,
 	// Commands
@@ -120,8 +116,6 @@ export type {
 	// Events - Resources
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
-	SearchProjectDocsToolCallEvent,
-	SearchProjectDocsToolResultEvent,
 	SendMessageHandler,
 	SendUserMessageHandler,
 	SessionBeforeCompactEvent,
@@ -176,11 +170,8 @@ export {
 	isEditToolResult,
 	isFindToolResult,
 	isGrepToolResult,
-	isListProjectDocsToolResult,
 	isLsToolResult,
-	isReadProjectDocToolResult,
 	isReadToolResult,
-	isSearchProjectDocsToolResult,
 	isToolCallEventType,
 	isWriteToolResult,
 } from "./types.ts";

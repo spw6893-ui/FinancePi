@@ -43,17 +43,6 @@ export {
 	type LsToolOptions,
 } from "./ls.ts";
 export {
-	createListProjectDocsTool,
-	createListProjectDocsToolDefinition,
-	createReadProjectDocTool,
-	createReadProjectDocToolDefinition,
-	createSearchProjectDocsTool,
-	createSearchProjectDocsToolDefinition,
-	type ListProjectDocsInput,
-	type ReadProjectDocInput,
-	type SearchProjectDocsInput,
-} from "./project-docs.ts";
-export {
 	createReadTool,
 	createReadToolDefinition,
 	type ReadOperations,
@@ -86,42 +75,13 @@ import { createEditTool, createEditToolDefinition, type EditToolOptions } from "
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
-import {
-	createListProjectDocsTool,
-	createListProjectDocsToolDefinition,
-	createReadProjectDocTool,
-	createReadProjectDocToolDefinition,
-	createSearchProjectDocsTool,
-	createSearchProjectDocsToolDefinition,
-} from "./project-docs.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName =
-	| "read"
-	| "bash"
-	| "edit"
-	| "write"
-	| "grep"
-	| "find"
-	| "ls"
-	| "list_project_docs"
-	| "read_project_doc"
-	| "search_project_docs";
-export const allToolNames: Set<ToolName> = new Set([
-	"read",
-	"bash",
-	"edit",
-	"write",
-	"grep",
-	"find",
-	"ls",
-	"list_project_docs",
-	"read_project_doc",
-	"search_project_docs",
-]);
+export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
+export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
 
 export interface ToolsOptions {
 	read?: ReadToolOptions;
@@ -149,12 +109,6 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
-		case "list_project_docs":
-			return createListProjectDocsToolDefinition(cwd);
-		case "read_project_doc":
-			return createReadProjectDocToolDefinition(cwd);
-		case "search_project_docs":
-			return createSearchProjectDocsToolDefinition(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -176,12 +130,6 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
-		case "list_project_docs":
-			return createListProjectDocsTool(cwd);
-		case "read_project_doc":
-			return createReadProjectDocTool(cwd);
-		case "search_project_docs":
-			return createSearchProjectDocsTool(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -193,9 +141,6 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 		createBashToolDefinition(cwd, options?.bash),
 		createEditToolDefinition(cwd, options?.edit),
 		createWriteToolDefinition(cwd, options?.write),
-		createListProjectDocsToolDefinition(cwd),
-		createReadProjectDocToolDefinition(cwd),
-		createSearchProjectDocsToolDefinition(cwd),
 	];
 }
 
@@ -205,9 +150,6 @@ export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOption
 		createGrepToolDefinition(cwd, options?.grep),
 		createFindToolDefinition(cwd, options?.find),
 		createLsToolDefinition(cwd, options?.ls),
-		createListProjectDocsToolDefinition(cwd),
-		createReadProjectDocToolDefinition(cwd),
-		createSearchProjectDocsToolDefinition(cwd),
 	];
 }
 
@@ -220,9 +162,6 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
-		list_project_docs: createListProjectDocsToolDefinition(cwd),
-		read_project_doc: createReadProjectDocToolDefinition(cwd),
-		search_project_docs: createSearchProjectDocsToolDefinition(cwd),
 	};
 }
 
@@ -232,9 +171,6 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 		createBashTool(cwd, options?.bash),
 		createEditTool(cwd, options?.edit),
 		createWriteTool(cwd, options?.write),
-		createListProjectDocsTool(cwd),
-		createReadProjectDocTool(cwd),
-		createSearchProjectDocsTool(cwd),
 	];
 }
 
@@ -244,9 +180,6 @@ export function createReadOnlyTools(cwd: string, options?: ToolsOptions): Tool[]
 		createGrepTool(cwd, options?.grep),
 		createFindTool(cwd, options?.find),
 		createLsTool(cwd, options?.ls),
-		createListProjectDocsTool(cwd),
-		createReadProjectDocTool(cwd),
-		createSearchProjectDocsTool(cwd),
 	];
 }
 
@@ -259,8 +192,5 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
-		list_project_docs: createListProjectDocsTool(cwd),
-		read_project_doc: createReadProjectDocTool(cwd),
-		search_project_docs: createSearchProjectDocsTool(cwd),
 	};
 }
