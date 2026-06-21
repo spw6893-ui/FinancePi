@@ -298,7 +298,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_write` 成功时不回显全文，只返回 usage、entry count 和 message。
 - `memory_write` 失败时才返回 current entries，方便模型合并后重试。
 - 搜索和读取由模型主动决定，不在每轮自动 flush 全量 memory。
-- `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time 命中，不回显完整 session 或 provider payload。
+- `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time/score/snippet 命中，不回显完整 session 或 provider payload。
 - `memory_research_report` 把长研究报告写入 `.pi/research/*.md`，再把 compact summary、report path 和 source paths 写进 memory index。
 
 ### `MemoryProvider`
@@ -450,13 +450,14 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 当前已具备轻量 session JSONL search：
 
 - `memory_session_search` 可搜索当前项目历史 session。
+- 搜索结果按 query term 覆盖度和命中次数排序，并带 compact snippet。
 - 搜索结果作为历史上下文，不是事实源。
 - 不需要 SQLite 或外部服务。
 
 目标：
 
-- 为 `.pi/memory` 和 session summary 建本地 FTS 索引。
-- 支持按 symbol、topic、用户偏好搜索。
+- 后续可为 `.pi/memory` 和 session summary 建本地 FTS 索引。
+- 后续可支持更强的 symbol、topic、用户偏好搜索。
 - 不依赖外部服务。
 
 ### Phase B：Research memory provider
@@ -496,6 +497,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 外部 memory provider 能在 session runtime teardown 时收到 `onSessionEnd()`，再执行 `shutdown()`。
 - 外部 memory provider 自带工具能通过 `getToolDefinitions()/handleToolCall()` 暴露给模型。
 - 模型能用 `memory_session_search` 召回当前项目历史 session 的 compact 讨论片段。
+- `memory_session_search` 返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - 单元测试覆盖 store、tools、context、manager、public API 和 finance namespace。
 
 ## Evidence
@@ -526,6 +528,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 
 - 2026-06-21：补充 provider 自带工具通过 core 注册到 AgentSession 的设计说明。
 - 2026-06-21：新增 `memory_research_report` 设计说明，用于长研究报告落盘和 compact memory 索引。
+- 2026-06-21：增强 `memory_session_search` 设计说明，补充相关性排序和 snippet。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

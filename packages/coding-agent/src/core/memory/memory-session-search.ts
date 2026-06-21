@@ -25,6 +25,8 @@ export interface MemorySessionSearchMatch {
 	role: "user" | "assistant";
 	line: number;
 	text: string;
+	snippet: string;
+	score: number;
 }
 
 export interface MemorySessionSearchResult {
@@ -32,7 +34,8 @@ export interface MemorySessionSearchResult {
 	truncated: boolean;
 }
 
-const MAX_SESSION_MEMORY_TEXT_CHARS = 800;
+const MAX_SESSION_MEMORY_TEXT_CHARS = 500;
+const MAX_SESSION_MEMORY_SNIPPET_CHARS = 220;
 
 function compactText(text: string): string {
 	const normalized = text.replace(/\s+/g, " ").trim();
@@ -64,6 +67,38 @@ function textMatches(text: string, terms: string[], ignoreCase: boolean): boolea
 	return terms.some((term) => normalized.includes(term));
 }
 
+function matchScore(text: string, terms: string[], ignoreCase: boolean): number {
+	const normalized = ignoreCase ? text.toLowerCase() : text;
+	let score = 0;
+	for (const term of terms) {
+		let offset = normalized.indexOf(term);
+		if (offset === -1) continue;
+		score += 10;
+		while (offset !== -1) {
+			score += 1;
+			offset = normalized.indexOf(term, offset + term.length);
+		}
+	}
+	return score;
+}
+
+function buildSnippet(text: string, terms: string[], ignoreCase: boolean): string {
+	const normalizedText = text.replace(/\s+/g, " ").trim();
+	const searchable = ignoreCase ? normalizedText.toLowerCase() : normalizedText;
+	const firstMatch = terms
+		.map((term) => searchable.indexOf(term))
+		.filter((index) => index >= 0)
+		.sort((a, b) => a - b)[0];
+	if (firstMatch === undefined || normalizedText.length <= MAX_SESSION_MEMORY_SNIPPET_CHARS) {
+		return compactText(normalizedText).slice(0, MAX_SESSION_MEMORY_SNIPPET_CHARS);
+	}
+	const start = Math.max(0, firstMatch - 80);
+	const end = Math.min(normalizedText.length, start + MAX_SESSION_MEMORY_SNIPPET_CHARS);
+	const prefix = start > 0 ? "..." : "";
+	const suffix = end < normalizedText.length ? "..." : "";
+	return `${prefix}${normalizedText.slice(start, end)}${suffix}`;
+}
+
 function sessionMessageTimestamp(entry: SessionMessageEntry): string {
 	const messageTimestamp = (entry.message as { timestamp?: unknown }).timestamp;
 	if (typeof messageTimestamp === "number" && Number.isFinite(messageTimestamp)) {
@@ -88,7 +123,6 @@ export async function searchSessionMemory(options: MemorySessionSearchOptions): 
 	}
 
 	const matches: MemorySessionSearchMatch[] = [];
-	let truncated = false;
 	const sessions = await listCandidateSessions(options.cwd, options.sessionDir);
 	for (const session of sessions) {
 		const entries = loadEntriesFromFile(session.path);
@@ -103,6 +137,7 @@ export async function searchSessionMemory(options: MemorySessionSearchOptions): 
 			const messageEntry = entries.find(
 				(entry): entry is SessionMessageEntry => entry.type === "message" && entry.message === message,
 			);
+			const score = matchScore(text, terms, ignoreCase);
 			matches.push({
 				sessionId: header?.type === "session" ? header.id : session.id,
 				sessionPath: session.path,
@@ -111,13 +146,12 @@ export async function searchSessionMemory(options: MemorySessionSearchOptions): 
 				role: message.role,
 				line,
 				text: compactText(text),
+				snippet: buildSnippet(text, terms, ignoreCase),
+				score,
 			});
-			if (matches.length >= limit) {
-				truncated = true;
-				return { matches, truncated };
-			}
 		}
 	}
 
-	return { matches, truncated };
+	matches.sort((a, b) => b.score - a.score || b.timestamp.localeCompare(a.timestamp));
+	return { matches: matches.slice(0, limit), truncated: matches.length > limit };
 }

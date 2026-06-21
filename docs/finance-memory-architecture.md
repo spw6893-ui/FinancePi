@@ -287,7 +287,8 @@ Finance 使用时固定 `namespace="finance"`。
 
 - 用户问“我们上次聊 NVDA 说了什么？”时召回历史讨论。
 - 查 prior conclusion、历史研究上下文、用户此前口头偏好。
-- 只返回 compact role/text/path/time 命中，不回显完整 session。
+- 只返回 compact role/text/path/time/score/snippet 命中，不回显完整 session。
+- 按 query term 覆盖度和命中次数排序，优先返回更相关片段。
 - 搜索结果仍是历史上下文，不能当当前市场事实。
 
 ### `memory_research_report`
@@ -505,6 +506,7 @@ Finance extension 只负责：
 
 - `memory_session_search` 搜索当前项目历史 session JSONL。
 - 支持“我们上次聊 NVDA 说了什么？”。
+- 返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - 搜索结果仍作为候选上下文，不自动当事实。
 
 后续可继续借鉴 Hermes SQLite FTS5 思路：
@@ -576,6 +578,7 @@ interface MemoryProvider {
 
 - 2026-06-21：补充四层 memory 架构决策和 provider 自带工具注册路径。
 - 2026-06-21：新增 `memory_research_report`，把长研究报告落盘到 `.pi/research` 并在 memory 中保存 compact index。
+- 2026-06-21：增强 `memory_session_search`，补充 query coverage 排序和 snippet 输出。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

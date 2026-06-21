@@ -231,6 +231,51 @@ describe("memory tools", () => {
 		});
 	});
 
+	it("ranks prior session messages by query coverage and returns snippets", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({
+				role: "user",
+				content: "NVDA quick note with no capex details",
+				timestamp: 1,
+			});
+			session.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "NVDA capex Blackwell margin thesis with all query terms" }],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 2,
+			});
+			const sessionSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_session_search");
+
+			const result = await sessionSearch?.execute(
+				"session-search",
+				{ query: "NVDA capex Blackwell", sessionDir, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("score=");
+			expect(output).toContain("snippet=");
+			expect(output).toContain("role=assistant");
+			expect(output).toContain("Blackwell");
+			expect(output).not.toContain("quick note");
+		});
+	});
+
 	it("writes a research report artifact and indexes only compact memory", async () => {
 		await withTempCwd(async (cwd) => {
 			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");

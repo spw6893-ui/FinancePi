@@ -91,7 +91,7 @@ function formatSessionSearch(result: MemorySessionSearchResult): string {
 	];
 	for (const match of result.matches) {
 		lines.push(
-			`${match.relativePath}:${match.line}: role=${match.role} session=${match.sessionId} at=${match.timestamp} text=${match.text}`,
+			`${match.relativePath}:${match.line}: role=${match.role} session=${match.sessionId} at=${match.timestamp} score=${match.score} snippet=${match.snippet} text=${match.text}`,
 		);
 	}
 	return lines.join("\n");
