@@ -28,6 +28,14 @@ function testNamespace(root = ".pi/memory/finance"): MemoryNamespaceConfig {
 				injectPolicy: "search_only",
 				description: "Research notes",
 			},
+			{
+				target: "long_term",
+				layer: "long_term",
+				file: "LONG_TERM.md",
+				charLimit: 240,
+				injectPolicy: "summary",
+				description: "Workflow notes",
+			},
 		],
 	};
 }
@@ -143,6 +151,44 @@ describe("MemoryStore", () => {
 		});
 	});
 
+	it("requires timestamps for domain memory and market-sensitive long-term memory", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+
+			const missingTimestamp = await store.write({
+				namespace: "finance",
+				target: "research",
+				action: "add",
+				content: "symbol=NVDA | 用户关注 AI infrastructure thesis。",
+			});
+			const withCreatedAt = await store.write({
+				namespace: "finance",
+				target: "research",
+				action: "add",
+				content: "symbol=NVDA | createdAt=2026-06-21 | 用户关注 AI infrastructure thesis。",
+			});
+			const workflowRule = await store.write({
+				namespace: "finance",
+				target: "long_term",
+				action: "add",
+				content: "FinancePi 研究流程：先检查 degradedReasons 和 artifact path，再输出分析。",
+			});
+			const staleLongTerm = await store.write({
+				namespace: "finance",
+				target: "long_term",
+				action: "add",
+				content: "symbol=BTCUSDT | 长期跟踪 ETF flow 和 Binance volume。",
+			});
+
+			expect(missingTimestamp.success).toBe(false);
+			expect(missingTimestamp.error).toContain("asOf or createdAt");
+			expect(withCreatedAt.success).toBe(true);
+			expect(workflowRule.success).toBe(true);
+			expect(staleLongTerm.success).toBe(false);
+			expect(staleLongTerm.error).toContain("asOf or createdAt");
+		});
+	});
+
 	it("reads with line offsets and searches with context", async () => {
 		await withTempCwd(async (cwd) => {
 			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
@@ -176,14 +222,14 @@ describe("MemoryStore", () => {
 			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
 			await store.write({
 				namespace: "finance",
-				target: "research",
+				target: "user",
 				operations: [
 					{ action: "add", content: "entry one" },
 					{ action: "add", content: "entry two" },
 				],
 			});
 
-			const content = await readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8");
+			const content = await readFile(join(cwd, ".pi/memory/finance/USER.md"), "utf8");
 			expect(content).toBe(["entry one", "entry two"].join(MEMORY_ENTRY_DELIMITER));
 		});
 	});

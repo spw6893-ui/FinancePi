@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { scanMemoryContent } from "./memory-security.ts";
+import { scanMemoryContent, validateMemoryEntryMetadata } from "./memory-security.ts";
 import type {
 	MemoryEntryOperation,
 	MemoryListResult,
@@ -161,6 +161,8 @@ export class MemoryStore {
 			if ((operation.action === "add" || operation.action === "replace") && operation.content) {
 				const scanError = scanMemoryContent(operation.content);
 				if (scanError) return this.writeError(resolved, `Operation ${index + 1}: ${scanError}`);
+				const metadataError = validateMemoryEntryMetadata(operation.content, resolved.target);
+				if (metadataError) return this.writeError(resolved, `Operation ${index + 1}: ${metadataError}`);
 			}
 		}
 

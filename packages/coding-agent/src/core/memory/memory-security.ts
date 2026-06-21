@@ -1,3 +1,5 @@
+import type { MemoryTargetConfig } from "./memory-types.ts";
+
 const SECRET_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
 	{ id: "openai_key", pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
 	{ id: "api_key_assignment", pattern: /\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD)\s*=\s*['"]?[^'"\s]{8,}/i },
@@ -13,6 +15,9 @@ const INJECTION_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
 ];
 
 const INVISIBLE_UNICODE_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u;
+const MEMORY_TIMESTAMP_PATTERN = /\b(?:asOf|createdAt)\s*=\s*\d{4}-\d{2}-\d{2}(?:T[^\s|]+)?\b/i;
+const MARKET_SENSITIVE_PATTERN =
+	/\b(?:symbol|ticker)\s*=|\b(?:price|revenue|earnings|eps|margin|volume|valuation|thesis|risk|catalyst)\b/i;
 
 export function scanMemoryContent(content: string): string | undefined {
 	for (const { id, pattern } of SECRET_PATTERNS) {
@@ -28,4 +33,13 @@ export function scanMemoryContent(content: string): string | undefined {
 		return "Blocked memory content: entry is too large; save a compact summary and artifact path instead.";
 	}
 	return undefined;
+}
+
+export function validateMemoryEntryMetadata(content: string, target: MemoryTargetConfig): string | undefined {
+	const requiresTimestamp =
+		target.layer === "domain" || (target.layer === "long_term" && MARKET_SENSITIVE_PATTERN.test(content));
+	if (!requiresTimestamp || MEMORY_TIMESTAMP_PATTERN.test(content)) {
+		return undefined;
+	}
+	return "Blocked memory content: domain or market-sensitive memory must include asOf or createdAt timestamp.";
 }
