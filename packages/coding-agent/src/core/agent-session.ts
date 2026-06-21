@@ -324,6 +324,7 @@ export class AgentSession {
 	private _extensionErrorUnsubscriber?: () => void;
 	private _marketResearchContinuationIds = new Set<string>();
 	private _memoryManager?: MemoryManager;
+	private _memoryProviderSystemPromptBlock = "";
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -1055,10 +1056,17 @@ export class AgentSession {
 		};
 		const basePrompt = buildSystemPrompt(this._baseSystemPromptOptions);
 		const memoryManager = this._getMemoryManager();
-		if (!memoryManager.hasNamespaces()) {
+		const memoryBlocks: string[] = [];
+		if (memoryManager.hasNamespaces()) {
+			memoryBlocks.push(memoryManager.buildSystemPromptBlock());
+		}
+		if (this._memoryProviderSystemPromptBlock.trim()) {
+			memoryBlocks.push(this._memoryProviderSystemPromptBlock);
+		}
+		if (memoryBlocks.length === 0) {
 			return basePrompt;
 		}
-		return `${basePrompt}\n\n${memoryManager.buildSystemPromptBlock()}`;
+		return `${basePrompt}\n\n${memoryBlocks.join("\n\n")}`;
 	}
 
 	// =========================================================================
@@ -2224,7 +2232,11 @@ export class AgentSession {
 		await this._extensionRunner.emit(this._sessionStartEvent);
 		await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
 		this._memoryManager = undefined;
-		await this._getMemoryManager().initializeProviders({ sessionId: this.sessionId });
+		const memoryManager = this._getMemoryManager();
+		await memoryManager.initializeProviders({ sessionId: this.sessionId });
+		this._memoryProviderSystemPromptBlock = await memoryManager.buildProviderSystemPromptBlock();
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
 	}
 
 	private async extendResourcesFromExtensions(reason: "startup" | "reload"): Promise<void> {
@@ -2564,6 +2576,7 @@ export class AgentSession {
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
 		this._memoryManager = undefined;
+		this._memoryProviderSystemPromptBlock = "";
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)

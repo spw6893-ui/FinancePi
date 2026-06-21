@@ -195,6 +195,7 @@ describe("finance memory namespace", () => {
 				initialize: async (ctx) => {
 					events.push(`init:${ctx.sessionId ?? "none"}`);
 				},
+				systemPromptBlock: async () => "PROVIDER MEMORY CONTEXT",
 				shutdown: async () => {
 					events.push("shutdown");
 				},
@@ -215,6 +216,7 @@ describe("finance memory namespace", () => {
 
 			await session.bindExtensions({});
 			expect(events).toEqual([`init:${session.sessionId}`]);
+			expect(session.systemPrompt).toContain("PROVIDER MEMORY CONTEXT");
 
 			session.dispose();
 			expect(events).toEqual([`init:${session.sessionId}`, "shutdown"]);
