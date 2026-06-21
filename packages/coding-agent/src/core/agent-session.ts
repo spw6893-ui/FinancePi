@@ -505,6 +505,7 @@ export class AgentSession {
 						"- Identify missing, stale, or degraded facts from the tool result.",
 						"- If key facts are missing/degraded, use another available data tool or web/network search when available.",
 						"- Avoid redundant market calls when the existing context already covers the question.",
+						"- If the user stated a durable finance preference, watchlist item, thesis note, or workflow lesson, consider memory_write with namespace=finance. Do not save current prices, raw news lists, large tool outputs, secrets, or unsourced market claims.",
 						"- Finalize only when evidence is sufficient, or clearly state remaining data gaps.",
 						"",
 						summaries,
