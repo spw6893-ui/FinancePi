@@ -209,6 +209,29 @@ describe("MemoryStore", () => {
 		});
 	});
 
+	it("ranks memory search matches by query coverage and returns snippets", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					"symbol=NVDA | asOf=2026-06-21 | quick note only.",
+					"symbol=NVDA | asOf=2026-06-21 | Blackwell capex margin thesis covers all terms.",
+				].join("\n"),
+				"utf8",
+			);
+
+			const search = await store.search({ query: "NVDA Blackwell capex", namespace: "finance", limit: 1 });
+
+			expect(search.matches).toHaveLength(1);
+			expect(search.matches[0].text).toContain("Blackwell");
+			expect(search.matches[0].score).toBeGreaterThan(0);
+			expect(search.matches[0].snippet).toContain("Blackwell capex");
+			expect(search.truncated).toBe(true);
+		});
+	});
+
 	it("rejects namespace roots outside the project", async () => {
 		await withTempCwd(async (cwd) => {
 			const store = new MemoryStore({ cwd, namespaces: [testNamespace("../outside")] });

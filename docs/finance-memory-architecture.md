@@ -252,6 +252,7 @@ Finance 使用时固定 `namespace="finance"`。
 - 查用户是否已经说过偏好。
 - 查某个 symbol 是否有历史 thesis。
 - 查长期 workflow 规则。
+- 返回 score/snippet，并按 query term 覆盖度和命中次数优先返回更相关条目。
 
 ### `memory_read`
 
@@ -558,6 +559,7 @@ interface MemoryProvider {
 
 - 用户明确说“记住”时，agent 能写入 `.pi/memory/finance`。
 - 后续会话能按 symbol、主题、偏好搜索 prior memory。
+- Persistent memory search 能返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - tool result compact，不再大 JSON 污染上下文。
 - 完整数据仍落 artifact，memory 只存摘要、偏好和路径。
@@ -579,6 +581,7 @@ interface MemoryProvider {
 - 2026-06-21：补充四层 memory 架构决策和 provider 自带工具注册路径。
 - 2026-06-21：新增 `memory_research_report`，把长研究报告落盘到 `.pi/research` 并在 memory 中保存 compact index。
 - 2026-06-21：增强 `memory_session_search`，补充 query coverage 排序和 snippet 输出。
+- 2026-06-21：增强 `memory_search`，补充 persistent memory 的 query coverage 排序和 snippet 输出。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

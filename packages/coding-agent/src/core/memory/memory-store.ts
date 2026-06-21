@@ -41,8 +41,40 @@ function usageText(chars: number, limit: number): string {
 	return `${pct}% - ${chars}/${limit} chars`;
 }
 
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function queryTerms(query: string, ignoreCase: boolean): string[] {
+	const normalized = ignoreCase ? query.toLowerCase() : query;
+	return normalized
+		.split(/\s+/)
+		.map((term) => term.trim())
+		.filter(Boolean);
+}
+
+function scoreTerms(text: string, terms: string[], ignoreCase: boolean): number {
+	const normalized = ignoreCase ? text.toLowerCase() : text;
+	let score = 0;
+	for (const term of terms) {
+		let offset = normalized.indexOf(term);
+		if (offset === -1) continue;
+		score += 10;
+		while (offset !== -1) {
+			score += 1;
+			offset = normalized.indexOf(term, offset + term.length);
+		}
+	}
+	return score;
+}
+
+function buildSearchSnippet(text: string, terms: string[], ignoreCase: boolean): string {
+	const normalizedText = text.replace(/\s+/g, " ").trim();
+	const searchable = ignoreCase ? normalizedText.toLowerCase() : normalizedText;
+	const firstMatch = terms
+		.map((term) => searchable.indexOf(term))
+		.filter((index) => index >= 0)
+		.sort((a, b) => a - b)[0];
+	if (firstMatch === undefined || normalizedText.length <= 220) return normalizedText.slice(0, 220);
+	const start = Math.max(0, firstMatch - 80);
+	const end = Math.min(normalizedText.length, start + 220);
+	return `${start > 0 ? "..." : ""}${normalizedText.slice(start, end)}${end < normalizedText.length ? "..." : ""}`;
 }
 
 export class MemoryStore {
@@ -105,8 +137,10 @@ export class MemoryStore {
 		if (!query) return { matches: [], truncated: false };
 		const limit = Math.max(1, options.limit ?? 50);
 		const context = Math.max(0, options.context ?? 0);
-		const flags = (options.ignoreCase ?? true) ? "i" : "";
-		const pattern = (options.literal ?? true) ? new RegExp(escapeRegExp(query), flags) : new RegExp(query, flags);
+		const ignoreCase = options.ignoreCase ?? true;
+		const flags = ignoreCase ? "i" : "";
+		const pattern = (options.literal ?? true) ? undefined : new RegExp(query, flags);
+		const terms = queryTerms(query, ignoreCase);
 		const matches: MemorySearchMatch[] = [];
 
 		for (const namespace of this.selectedNamespaces(options.namespace)) {
@@ -117,14 +151,18 @@ export class MemoryStore {
 				const content = await this.readRawFile(resolved.absolutePath);
 				const lines = content ? content.split(/\r?\n/) : [];
 				for (let index = 0; index < lines.length; index++) {
-					if (!pattern.test(lines[index])) continue;
-					pattern.lastIndex = 0;
+					const line = lines[index];
+					const score = pattern ? (pattern.test(line) ? 1 : 0) : scoreTerms(line, terms, ignoreCase);
+					if (score <= 0) continue;
+					if (pattern) pattern.lastIndex = 0;
 					matches.push({
 						namespace: namespace.namespace,
 						target: target.target,
 						relativePath: resolved.relativePath,
 						line: index + 1,
-						text: lines[index],
+						text: line,
+						snippet: buildSearchSnippet(line, pattern ? [query] : terms, ignoreCase),
+						score,
 						contextBefore: lines
 							.slice(Math.max(0, index - context), index)
 							.map((text, offset) => ({ line: Math.max(0, index - context) + offset + 1, text })),
@@ -132,11 +170,11 @@ export class MemoryStore {
 							.slice(index + 1, index + 1 + context)
 							.map((text, offset) => ({ line: index + offset + 2, text })),
 					});
-					if (matches.length >= limit) return { matches, truncated: true };
 				}
 			}
 		}
-		return { matches, truncated: false };
+		matches.sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath) || a.line - b.line);
+		return { matches: matches.slice(0, limit), truncated: matches.length > limit };
 	}
 
 	async write(options: {

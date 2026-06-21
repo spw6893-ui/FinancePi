@@ -76,7 +76,9 @@ function formatSearch(result: MemorySearchResult): string {
 		for (const before of match.contextBefore) {
 			lines.push(`${match.relativePath}-${before.line}- ${before.text}`);
 		}
-		lines.push(`${match.relativePath}:${match.line}: ${match.text}`);
+		lines.push(
+			`${match.relativePath}:${match.line}: score=${match.score} snippet=${match.snippet} text=${match.text}`,
+		);
 		for (const after of match.contextAfter) {
 			lines.push(`${match.relativePath}-${after.line}- ${after.text}`);
 		}

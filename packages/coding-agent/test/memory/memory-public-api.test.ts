@@ -25,6 +25,38 @@ describe("memory public API", () => {
 		expect(manager.getNamespaces().map((item) => item.namespace)).toEqual(["finance"]);
 	});
 
+	it("exposes ranked persistent memory search results through the store", async () => {
+		await withTempCwd(async (cwd) => {
+			const namespace: MemoryNamespaceConfig = {
+				namespace: "finance",
+				root: ".pi/memory/finance",
+				description: "Finance memory",
+				targets: [
+					{
+						target: "research",
+						layer: "domain",
+						file: "RESEARCH.md",
+						charLimit: 1000,
+						injectPolicy: "search_only",
+						description: "Research memory",
+					},
+				],
+			};
+			const manager = new MemoryManager({ cwd, namespaces: [namespace] });
+			await manager.getStore().write({
+				namespace: "finance",
+				target: "research",
+				action: "add",
+				content: "symbol=NVDA | asOf=2026-06-21 | Blackwell capex margin thesis.",
+			});
+
+			const result = await manager.getStore().search({ namespace: "finance", query: "NVDA capex" });
+
+			expect(result.matches[0].score).toBeGreaterThan(0);
+			expect(result.matches[0].snippet).toContain("NVDA");
+		});
+	});
+
 	it("exports provider lifecycle types for external memory adapters", async () => {
 		const provider: MemoryProvider = {
 			name: "test-memory-provider",

@@ -69,6 +69,8 @@ export interface MemorySearchMatch {
 	relativePath: string;
 	line: number;
 	text: string;
+	snippet: string;
+	score: number;
 	contextBefore: Array<{ line: number; text: string }>;
 	contextAfter: Array<{ line: number; text: string }>;
 }

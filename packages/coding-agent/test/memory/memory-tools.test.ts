@@ -143,7 +143,8 @@ describe("memory tools", () => {
 			);
 
 			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md-1- before");
-			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md:2: NVDA thesis");
+			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md:2: score=");
+			expect(text(result)).toContain("snippet=NVDA thesis");
 			expect(text(result)).toContain(".pi/memory/finance/RESEARCH.md-3- after");
 		});
 	});
