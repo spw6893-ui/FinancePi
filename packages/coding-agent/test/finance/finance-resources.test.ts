@@ -77,6 +77,27 @@ describe("finance resource tools", () => {
 		}
 	});
 
+	it("lists and reads research reports created by memory tools", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-research-resource-"));
+		try {
+			await mkdir(join(cwd, ".git"), { recursive: true });
+			await mkdir(join(cwd, ".pi", "research"), { recursive: true });
+			await writeFile(join(cwd, ".pi", "research", "nvda-report.md"), "# NVDA report\nBlackwell notes.\n");
+
+			const tools = await getFinanceResourceTools(cwd);
+			const list = await tools.list?.execute("list", {}, undefined, undefined, { cwd } as never);
+			const read = await tools.read?.execute("read", { path: ".pi/research/nvda-report.md" }, undefined, undefined, {
+				cwd,
+			} as never);
+
+			expect(getTextOutput(list)).toContain("research_report | .pi/research/nvda-report.md");
+			expect(getTextOutput(read)).toContain("finance_resource read: .pi/research/nvda-report.md");
+			expect(getTextOutput(read)).toContain("Blackwell notes.");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("searches artifacts and docs with context", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-search-resources-"));
 		try {

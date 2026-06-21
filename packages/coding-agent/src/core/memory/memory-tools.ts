@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
 import type { MemoryProvider } from "./memory-provider.ts";
@@ -20,6 +22,36 @@ const layerParam = {
 		}),
 	),
 };
+
+function slugify(value: string): string {
+	return (
+		value
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 80) || "research-report"
+	);
+}
+
+function utcStamp(date = new Date()): string {
+	return date.toISOString().replace(/[:.]/g, "-");
+}
+
+function assertProjectRelativePath(cwd: string, path: string): string {
+	if (isAbsolute(path)) throw new Error("Research source path must be project-relative.");
+	const absolute = resolve(cwd, path);
+	const rel = relative(resolve(cwd), absolute);
+	if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("Research source path escapes project root.");
+	return path;
+}
+
+async function writeResearchReportFile(cwd: string, title: string, content: string): Promise<string> {
+	const relativePath = `.pi/research/${utcStamp()}-${slugify(title)}.md`;
+	const absolutePath = join(cwd, relativePath);
+	await mkdir(join(cwd, ".pi", "research"), { recursive: true });
+	await writeFile(absolutePath, content, "utf8");
+	return relativePath;
+}
 
 function createStore(ctx: ExtensionContext, namespaces: MemoryNamespaceConfig[]): MemoryStore {
 	return new MemoryStore({ cwd: ctx.cwd, namespaces });
@@ -219,7 +251,65 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
-	return [listTool, readTool, searchTool, writeTool, sessionSearchTool];
+	const researchReportTool = defineTool({
+		name: "memory_research_report",
+		label: "Memory Research Report",
+		description:
+			"Write a long research report to .pi/research and index only a compact summary/path in persistent memory.",
+		promptSnippet: "Persist a long research report and compact memory index",
+		promptGuidelines: [
+			"Use memory_research_report after a substantial research pass when the full notes are worth preserving.",
+			"Keep summary compact and include asOf or createdAt for market-sensitive finance research.",
+			"Do not use this for raw market data dumps; save full data as artifacts and reference artifact paths.",
+		],
+		parameters: Type.Object({
+			namespace: Type.String({ description: "Memory namespace, for example finance." }),
+			title: Type.String({ description: "Human-readable research report title." }),
+			summary: Type.String({
+				description: "Compact memory index summary. Include asOf=YYYY-MM-DD or createdAt=YYYY-MM-DD.",
+			}),
+			content: Type.String({ description: "Full Markdown research report body to write under .pi/research." }),
+			target: Type.Optional(Type.String({ description: "Memory target for the compact index, default research." })),
+			symbols: Type.Optional(Type.Array(Type.String({ description: "Related symbols or assets." }))),
+			sourcePaths: Type.Optional(
+				Type.Array(
+					Type.String({ description: "Project-relative artifact/report/source paths used by this research." }),
+				),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const sourcePaths = (params.sourcePaths ?? []).map((path) => assertProjectRelativePath(ctx.cwd, path));
+			const reportPath = await writeResearchReportFile(ctx.cwd, params.title, params.content);
+			const indexEntry = [
+				params.summary.trim(),
+				`reportPath=${reportPath}`,
+				params.symbols?.length ? `symbols=${params.symbols.join(",")}` : "",
+				sourcePaths.length ? `sourcePaths=${sourcePaths.join(",")}` : "",
+			]
+				.filter(Boolean)
+				.join(" | ");
+			const result = await createStore(ctx, namespaces).write({
+				namespace: params.namespace,
+				target: params.target ?? "research",
+				action: "add",
+				content: indexEntry,
+			});
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: result.success
+							? `memory_research_report: success namespace=${result.namespace} target=${result.target} reportPath=${reportPath} usage=${result.usage} entries=${result.entryCount}`
+							: `memory_research_report: error namespace=${result.namespace} target=${result.target} reportPath=${reportPath} error=${result.error}`,
+					},
+				],
+				details: { reportPath, memory: result },
+				isError: !result.success,
+			};
+		},
+	});
+
+	return [listTool, readTool, searchTool, writeTool, sessionSearchTool, researchReportTool];
 }
 
 function formatProviderToolResult(result: unknown): string {

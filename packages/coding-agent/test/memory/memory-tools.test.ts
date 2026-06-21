@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -228,6 +228,44 @@ describe("memory tools", () => {
 			const output = text(result);
 			expect(output.length).toBeLessThan(1200);
 			expect(output).toContain("[truncated]");
+		});
+	});
+
+	it("writes a research report artifact and indexes only compact memory", async () => {
+		await withTempCwd(async (cwd) => {
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "NVDA Blackwell supply check",
+					summary: "symbol=NVDA | asOf=2026-06-21 | Blackwell supply remains the key watch item.",
+					content:
+						"# NVDA Blackwell supply check\n\nFull sourced research notes.\n\nartifact=.pi/artifacts/market-data/nvda.csv",
+					symbols: ["NVDA"],
+					sourcePaths: [".pi/artifacts/market-data/nvda.csv"],
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_research_report: success");
+			expect(output).toContain(".pi/research/");
+			const reportPath = output.match(/\.pi\/research\/\S+\.md/)?.[0];
+			expect(reportPath).toBeTruthy();
+
+			const report = await readFile(join(cwd, reportPath ?? ""), "utf8");
+			expect(report).toContain("# NVDA Blackwell supply check");
+			expect(report).toContain("Full sourced research notes.");
+
+			const memoryIndex = await readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8");
+			expect(memoryIndex).toContain("Blackwell supply remains the key watch item");
+			expect(memoryIndex).toContain(`reportPath=${reportPath}`);
+			expect(memoryIndex).toContain("sourcePaths=.pi/artifacts/market-data/nvda.csv");
+			expect(memoryIndex).not.toContain("Full sourced research notes.");
 		});
 	});
 });

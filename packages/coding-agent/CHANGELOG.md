@@ -5,6 +5,7 @@
 ### Added
 
 - Added inherited configurable `chat-template` thinking support for OpenAI-compatible providers that use `chat_template_kwargs`, such as DeepSeek models behind vLLM ([#5673](https://github.com/earendil-works/pi/issues/5673)).
+- Added core memory research reports that write long notes to `.pi/research`, index only compact summaries and paths in persistent memory, and expose reports through finance resource tools.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
 - Changed Pi's default prompt and built-in workflow to finance-first US equity/ETF research with sourced finance tools enabled by default.
 

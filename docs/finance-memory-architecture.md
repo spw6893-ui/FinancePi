@@ -229,6 +229,7 @@ memory_read
 memory_search
 memory_write
 memory_session_search
+memory_research_report
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -288,6 +289,22 @@ Finance 使用时固定 `namespace="finance"`。
 - 查 prior conclusion、历史研究上下文、用户此前口头偏好。
 - 只返回 compact role/text/path/time 命中，不回显完整 session。
 - 搜索结果仍是历史上下文，不能当当前市场事实。
+
+### `memory_research_report`
+
+把长研究报告写到 `.pi/research/*.md`，同时只把 compact index 写入 memory。
+
+用途：
+
+- 深度研究结束后保存完整 Markdown 报告。
+- 在 `.pi/memory/finance/RESEARCH.md` 保存 `summary | reportPath | symbols | sourcePaths`。
+- 后续通过 `memory_search` 召回报告索引，再用 `finance_read_resource` 按需读取 report 或 artifact。
+
+规则：
+
+- `summary` 必须短小，并为市场敏感内容包含 `asOf=` 或 `createdAt=`。
+- `content` 可以较长，但不进入 memory prompt。
+- `sourcePaths` 必须是项目内相对路径。
 
 ## System Prompt Integration
 
@@ -497,13 +514,16 @@ Finance extension 只负责：
 
 ### Phase 4：Research notes
 
-新增：
+已覆盖轻量 MVP：
 
 ```text
 .pi/research/*.md
 ```
 
-深度研究结束时生成可读研究报告，memory 只保存摘要和 path。
+- `memory_research_report` 写入完整 Markdown 研究报告。
+- `RESEARCH.md` 只保存 compact summary、report path、symbols 和 source paths。
+- `finance_list_resources` / `finance_read_resource` / `finance_search_resources` 能发现、读取和搜索 `.pi/research/*.md`。
+- 不把报告全文注入 prompt，也不把 raw market artifact 复制进 memory。
 
 ### Phase 5：Provider adapter
 
@@ -539,6 +559,8 @@ interface MemoryProvider {
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - tool result compact，不再大 JSON 污染上下文。
 - 完整数据仍落 artifact，memory 只存摘要、偏好和路径。
+- 深度研究报告能落 `.pi/research/*.md`，同时 `RESEARCH.md` 只保留 compact index。
+- Finance resource tools 能读取 `.pi/research/*.md` report path。
 - memory 文件不越过项目目录。
 - 单元测试覆盖读写、搜索、容量、安全和 finance namespace。
 
@@ -553,6 +575,7 @@ interface MemoryProvider {
 ## Changelog
 
 - 2026-06-21：补充四层 memory 架构决策和 provider 自带工具注册路径。
+- 2026-06-21：新增 `memory_research_report`，把长研究报告落盘到 `.pi/research` 并在 memory 中保存 compact index。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

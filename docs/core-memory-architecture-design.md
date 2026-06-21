@@ -288,6 +288,7 @@ memory_read
 memory_search
 memory_write
 memory_session_search
+memory_research_report
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -298,6 +299,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_write` 失败时才返回 current entries，方便模型合并后重试。
 - 搜索和读取由模型主动决定，不在每轮自动 flush 全量 memory。
 - `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time 命中，不回显完整 session 或 provider payload。
+- `memory_research_report` 把长研究报告写入 `.pi/research/*.md`，再把 compact summary、report path 和 source paths 写进 memory index。
 
 ### `MemoryProvider`
 
@@ -459,7 +461,13 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 
 ### Phase B：Research memory provider
 
-目标：
+当前轻量实现：
+
+- `memory_research_report` 可生成 `.pi/research/*.md`。
+- `.pi/memory/<namespace>/RESEARCH.md` 只保存摘要、report path、symbols 和 source paths。
+- 后续模型通过 `memory_search` 找索引，再通过 finance resource tools 按需读取报告或 artifact。
+
+后续目标：
 
 - 深度研究结束后生成 `.pi/research/*.md`。
 - Memory 只写摘要、关键结论和 report path。
@@ -478,6 +486,8 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 后续会话能搜索 prior preference、watchlist、symbol thesis。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - 工具结果保持 compact，完整数据落 artifact。
+- 长研究内容能通过 `memory_research_report` 落 `.pi/research/*.md`，memory 只保存 compact index。
+- Finance resource tools 能读取 `.pi/research/*.md` report path。
 - Memory 不保存 secret、大 JSON、raw news 或 raw price dump。
 - Finance extension 不再手写 memory tools/prompt，core 自动注入。
 - 外部 memory provider 可以注册、初始化并追加 prompt block。
@@ -515,6 +525,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 ## Changelog
 
 - 2026-06-21：补充 provider 自带工具通过 core 注册到 AgentSession 的设计说明。
+- 2026-06-21：新增 `memory_research_report` 设计说明，用于长研究报告落盘和 compact memory 索引。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。
