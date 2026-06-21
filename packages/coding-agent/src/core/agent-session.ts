@@ -82,9 +82,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
-import { buildMemorySystemPromptBlock } from "./memory/memory-context.ts";
-import { MemoryStore } from "./memory/memory-store.ts";
-import { createMemoryTools } from "./memory/memory-tools.ts";
+import { MemoryManager } from "./memory/memory-manager.ts";
 import type { MemoryNamespaceConfig } from "./memory/memory-types.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { ModelRegistry } from "./model-registry.ts";
@@ -1000,6 +998,10 @@ export class AgentSession {
 		return [...namespaces.values()];
 	}
 
+	private _getMemoryManager(): MemoryManager {
+		return new MemoryManager({ cwd: this._cwd, namespaces: this._getMemoryNamespaces() });
+	}
+
 	private _rebuildSystemPrompt(toolNames: string[]): string {
 		const validToolNames = toolNames.filter((name) => this._toolRegistry.has(name));
 		const toolSnippets: Record<string, string> = {};
@@ -1034,15 +1036,11 @@ export class AgentSession {
 			promptGuidelines,
 		};
 		const basePrompt = buildSystemPrompt(this._baseSystemPromptOptions);
-		const memoryNamespaces = this._getMemoryNamespaces();
-		if (memoryNamespaces.length === 0) {
+		const memoryManager = this._getMemoryManager();
+		if (!memoryManager.hasNamespaces()) {
 			return basePrompt;
 		}
-		const memoryBlock = buildMemorySystemPromptBlock(
-			new MemoryStore({ cwd: this._cwd, namespaces: memoryNamespaces }),
-			memoryNamespaces,
-		);
-		return `${basePrompt}\n\n${memoryBlock}`;
+		return `${basePrompt}\n\n${memoryManager.buildSystemPromptBlock()}`;
 	}
 
 	// =========================================================================
@@ -2409,14 +2407,13 @@ export class AgentSession {
 		const isAllowedTool = (name: string): boolean =>
 			(!allowedToolNames || allowedToolNames.has(name)) && !excludedToolNames?.has(name);
 
-		const memoryNamespaces = this._getMemoryNamespaces();
-		const memoryTools =
-			memoryNamespaces.length > 0
-				? createMemoryTools(memoryNamespaces).map((definition) => ({
-						definition,
-						sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
-					}))
-				: [];
+		const memoryManager = this._getMemoryManager();
+		const memoryTools = memoryManager.hasNamespaces()
+			? memoryManager.createTools().map((definition) => ({
+					definition,
+					sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
+				}))
+			: [];
 		const registeredTools = this._extensionRunner.getAllRegisteredTools();
 		const allCustomTools = [
 			...memoryTools,

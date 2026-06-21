@@ -29,6 +29,7 @@
 已有代码证据：
 
 - Core memory 类型：`packages/coding-agent/src/core/memory/memory-types.ts`
+- Core memory facade：`packages/coding-agent/src/core/memory/memory-manager.ts`
 - 本地文件 store：`packages/coding-agent/src/core/memory/memory-store.ts`
 - 写入安全扫描：`packages/coding-agent/src/core/memory/memory-security.ts`
 - memory tools：`packages/coding-agent/src/core/memory/memory-tools.ts`
