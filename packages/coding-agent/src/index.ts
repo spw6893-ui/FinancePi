@@ -164,6 +164,24 @@ export {
 export { default as financeAgentExtension } from "./core/finance-agent-extension.ts";
 // Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
+export { buildMemorySystemPromptBlock } from "./core/memory/memory-context.ts";
+export { MemoryManager, type MemoryManagerOptions } from "./core/memory/memory-manager.ts";
+export { MEMORY_ENTRY_DELIMITER, MemoryStore } from "./core/memory/memory-store.ts";
+export { createMemoryTools } from "./core/memory/memory-tools.ts";
+export type {
+	MemoryEntryOperation,
+	MemoryInjectPolicy,
+	MemoryLayer,
+	MemoryListResult,
+	MemoryNamespaceConfig,
+	MemoryReadResult,
+	MemorySearchMatch,
+	MemorySearchResult,
+	MemoryTargetConfig,
+	MemoryTargetState,
+	MemoryWriteResult,
+} from "./core/memory/memory-types.ts";
+export { createFinanceMemoryNamespace } from "./core/memory/namespace-registry.ts";
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
 export type {
