@@ -186,6 +186,41 @@ describe("finance memory namespace", () => {
 		});
 	});
 
+	it("initializes and shuts down extension memory providers with AgentSession lifecycle", async () => {
+		await withTempCwd(async (cwd) => {
+			const events: string[] = [];
+			const provider: MemoryProvider = {
+				name: "lifecycle-memory",
+				isAvailable: () => true,
+				initialize: async (ctx) => {
+					events.push(`init:${ctx.sessionId ?? "none"}`);
+				},
+				shutdown: async () => {
+					events.push("shutdown");
+				},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider-lifecycle>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(provider);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			await session.bindExtensions({});
+			expect(events).toEqual([`init:${session.sessionId}`]);
+
+			session.dispose();
+			expect(events).toEqual([`init:${session.sessionId}`, "shutdown"]);
+		});
+	});
+
 	it("keeps finance before_agent_start focused on finance prompt only", async () => {
 		await withTempCwd(async (cwd) => {
 			const result = await createTestExtensionsResult([{ factory: financeAgentExtension, path: "<finance>" }], cwd);

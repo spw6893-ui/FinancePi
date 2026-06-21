@@ -323,6 +323,7 @@ export class AgentSession {
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
 	private _marketResearchContinuationIds = new Set<string>();
+	private _memoryManager?: MemoryManager;
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -825,6 +826,7 @@ export class AgentSession {
 			"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		this._disconnectFromAgent();
+		void this._memoryManager?.shutdownProviders().catch(() => {});
 		this._eventListeners = [];
 		cleanupSessionResources(this.sessionId);
 	}
@@ -1010,11 +1012,12 @@ export class AgentSession {
 	}
 
 	private _getMemoryManager(): MemoryManager {
-		return new MemoryManager({
+		this._memoryManager ??= new MemoryManager({
 			cwd: this._cwd,
 			namespaces: this._getMemoryNamespaces(),
 			providers: this._getMemoryProviders(),
 		});
+		return this._memoryManager;
 	}
 
 	private _rebuildSystemPrompt(toolNames: string[]): string {
@@ -2220,6 +2223,8 @@ export class AgentSession {
 		this._applyExtensionBindings(this._extensionRunner);
 		await this._extensionRunner.emit(this._sessionStartEvent);
 		await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
+		this._memoryManager = undefined;
+		await this._getMemoryManager().initializeProviders({ sessionId: this.sessionId });
 	}
 
 	private async extendResourcesFromExtensions(reason: "startup" | "reload"): Promise<void> {
@@ -2558,6 +2563,7 @@ export class AgentSession {
 		}
 		this._bindExtensionCore(this._extensionRunner);
 		this._applyExtensionBindings(this._extensionRunner);
+		this._memoryManager = undefined;
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
