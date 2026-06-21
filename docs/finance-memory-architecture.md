@@ -462,6 +462,7 @@ Finance extension 只负责：
 - Core 自动暴露 `memory_list/read/search/write/session_search` 对应的 `memory_*` 工具，包括 `memory_session_search`。
 - 新增 extension API：`registerMemoryProvider`。
 - AgentSession 初始化 provider 并追加 provider prompt block。
+- 每轮 prompt 前调用 provider `prefetch()`，把 compact recall 临时追加到当前 turn system prompt，且不写入 session。
 - Session runtime teardown 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
 
 ### Phase 3：Session search
@@ -528,6 +529,7 @@ interface MemoryProvider {
 
 ## Changelog
 
+- 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。
 - 2026-06-21：更新 core integration 状态，补充 memory provider lifecycle 和 core 自动工具注册。

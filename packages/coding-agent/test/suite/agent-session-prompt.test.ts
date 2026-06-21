@@ -121,6 +121,114 @@ describe("AgentSession prompt characterization", () => {
 		expect(syncedTurns).toEqual(["analyze NVDA->final view"]);
 	});
 
+	it("injects memory provider prefetch into the current turn system prompt only", async () => {
+		let providerSystemPrompt = "";
+		const provider: MemoryProvider = {
+			name: "prefetch-memory",
+			isAvailable: () => true,
+			initialize: async () => {},
+			prefetch: async (query) => `prior research for ${query}: asOf=2026-06-20`,
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-prefetch>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			(context) => {
+				providerSystemPrompt = context.systemPrompt ?? "";
+				return fauxAssistantMessage("used recall");
+			},
+		]);
+
+		await harness.session.prompt("NVDA");
+
+		expect(providerSystemPrompt).toContain("MEMORY PROVIDER PREFETCH");
+		expect(providerSystemPrompt).toContain("prior research for NVDA");
+		expect(harness.sessionManager.getEntries().filter((entry) => entry.type === "custom_message")).toHaveLength(0);
+	});
+
+	it("continues prompting when memory provider prefetch fails", async () => {
+		let sawPrompt = false;
+		const provider: MemoryProvider = {
+			name: "prefetch-memory",
+			isAvailable: () => true,
+			initialize: async () => {},
+			prefetch: async () => {
+				throw new Error("prefetch failed");
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-prefetch>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			() => {
+				sawPrompt = true;
+				return fauxAssistantMessage("ok");
+			},
+		]);
+
+		await harness.session.prompt("NVDA");
+
+		expect(sawPrompt).toBe(true);
+		expect(getMessageText(harness.session.messages.at(-1))).toBe("ok");
+	});
+
+	it("truncates oversized memory provider prefetch context", async () => {
+		let providerSystemPrompt = "";
+		const provider: MemoryProvider = {
+			name: "prefetch-memory",
+			isAvailable: () => true,
+			initialize: async () => {},
+			prefetch: async () => `NVDA ${"large recall ".repeat(1000)}`,
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-prefetch>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+		await harness.session.bindExtensions({});
+
+		harness.setResponses([
+			(context) => {
+				providerSystemPrompt = context.systemPrompt ?? "";
+				return fauxAssistantMessage("ok");
+			},
+		]);
+
+		await harness.session.prompt("NVDA");
+
+		expect(providerSystemPrompt.length).toBeLessThan(12_000);
+		expect(providerSystemPrompt).toContain("[truncated]");
+	});
+
 	it("handles a tool call turn and waits for the follow-up LLM response", async () => {
 		const toolRuns: string[] = [];
 		const echoTool: AgentTool = {
