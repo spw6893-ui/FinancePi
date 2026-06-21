@@ -439,11 +439,25 @@ export function createMemoryProviderTools(providers: MemoryProvider[]) {
 							isError: true,
 						};
 					}
-					const result = await provider.handleToolCall(providerTool.name, params);
-					return {
-						content: [{ type: "text" as const, text: formatProviderToolResult(result) }],
-						details: result,
-					};
+					try {
+						const result = await provider.handleToolCall(providerTool.name, params);
+						return {
+							content: [{ type: "text" as const, text: formatProviderToolResult(result) }],
+							details: result,
+						};
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error);
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `memory provider tool error: provider=${provider.name} tool=${providerTool.name} error=${message}`,
+								},
+							],
+							details: { provider: provider.name, tool: providerTool.name, error: message },
+							isError: true,
+						};
+					}
 				},
 			}),
 		),

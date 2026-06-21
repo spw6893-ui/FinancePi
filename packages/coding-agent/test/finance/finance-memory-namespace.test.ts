@@ -278,6 +278,53 @@ describe("finance memory namespace", () => {
 		});
 	});
 
+	it("returns compact errors when memory provider tools fail", async () => {
+		await withTempCwd(async (cwd) => {
+			const provider: MemoryProvider = {
+				name: "provider-tools",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_external_lookup",
+						description: "Lookup external provider memory.",
+						parameters: Type.Object({ query: Type.String() }),
+					},
+				],
+				handleToolCall: async () => {
+					throw new Error("provider lookup failed");
+				},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider-tool-error>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(provider);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				await session.bindExtensions({});
+				const tool = session.getToolDefinition("memory_external_lookup");
+				const output = await tool?.execute("lookup", { query: "NVDA" }, undefined, undefined, { cwd } as never);
+
+				expect((output as any).isError).toBe(true);
+				expect(getText(output)).toContain("memory provider tool error");
+				expect(getText(output)).toContain("provider=provider-tools");
+				expect(getText(output)).toContain("tool=memory_external_lookup");
+				expect(getText(output)).toContain("provider lookup failed");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
 	it("keeps finance before_agent_start focused on finance prompt only", async () => {
 		await withTempCwd(async (cwd) => {
 			const result = await createTestExtensionsResult([{ factory: financeAgentExtension, path: "<finance>" }], cwd);
