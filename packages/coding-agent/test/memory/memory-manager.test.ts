@@ -66,6 +66,7 @@ describe("MemoryManager", () => {
 				"memory_session_search",
 				"memory_research_report",
 				"memory_audit",
+				"memory_provider_audit",
 			]);
 			expect(manager.buildSystemPromptBlock()).toContain("CORE MEMORY CONTEXT");
 			expect(manager.buildSystemPromptBlock()).toContain("用户偏好免费公开数据源");
@@ -211,6 +212,46 @@ describe("MemoryManager", () => {
 				"failing-runtime:onSessionEnd:end failed",
 				"failing-runtime:shutdown:shutdown failed",
 			]);
+		});
+	});
+
+	it("audits configured providers, available providers, and provider errors", async () => {
+		await withTempCwd(async (cwd) => {
+			const failing: MemoryProvider = {
+				name: "failing",
+				isAvailable: () => true,
+				initialize: async () => {
+					throw new Error("init failed");
+				},
+			};
+			const healthy: MemoryProvider = {
+				name: "healthy",
+				isAvailable: () => true,
+				initialize: async () => {},
+			};
+			const unavailable: MemoryProvider = {
+				name: "unavailable",
+				isAvailable: () => false,
+				initialize: async () => {},
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [failing, healthy, unavailable],
+			});
+
+			await manager.initializeProviders();
+			const tool = manager.createTools().find((item) => item.name === "memory_provider_audit");
+			const result = await tool?.execute("provider-audit", {}, undefined, undefined, { cwd } as never);
+			const output = result?.content
+				?.filter((item) => item.type === "text")
+				.map((item) => item.text)
+				.join("\n");
+
+			expect(output).toContain("memory_provider_audit: configured=3 available=1 errors=1");
+			expect(output).toContain("configured=failing,healthy,unavailable");
+			expect(output).toContain("available=healthy");
+			expect(output).toContain("error provider=failing phase=initialize message=init failed");
 		});
 	});
 });

@@ -22,6 +22,7 @@ export function buildMemorySystemPromptBlock(store: MemoryStore, namespaces: Mem
 		"- Use memory_session_search when the user asks what was discussed previously or references earlier conclusions.",
 		"- Use memory_write when the user explicitly asks you to remember durable preferences, watchlist items, research notes, or workflow lessons.",
 		"- Use memory_audit and memory_compact when persistent memory is stale, duplicated, or close to its target capacity.",
+		"- Use memory_provider_audit when external/provider memory seems unavailable, stale, or inconsistent.",
 		"- Verify market-sensitive memory against current tools, artifacts, uploaded files, or explicit user data.",
 		...guidance.map((item) => `- ${item}`),
 	];

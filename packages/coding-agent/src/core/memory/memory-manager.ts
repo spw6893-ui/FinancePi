@@ -1,4 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { Type } from "typebox";
+import { defineTool } from "../extensions/types.ts";
 import { buildMemorySystemPromptBlock } from "./memory-context.ts";
 import type {
 	MemoryProvider,
@@ -47,7 +49,7 @@ export class MemoryManager {
 	}
 
 	createTools() {
-		return createMemoryTools(this.namespaces);
+		return [...createMemoryTools(this.namespaces), this.createProviderAuditTool()];
 	}
 
 	createProviderTools() {
@@ -157,6 +159,33 @@ export class MemoryManager {
 			provider: provider.name,
 			phase,
 			message: error instanceof Error ? error.message : String(error),
+		});
+	}
+
+	private createProviderAuditTool() {
+		return defineTool({
+			name: "memory_provider_audit",
+			label: "Memory Provider Audit",
+			description: "Audit configured external memory providers, available providers, and provider errors.",
+			promptSnippet: "Audit external memory provider state",
+			promptGuidelines: [
+				"Use memory_provider_audit when external/provider memory seems unavailable, stale, or inconsistent.",
+			],
+			parameters: Type.Object({}),
+			execute: async () => {
+				const configured = this.providers.map((provider) => provider.name);
+				const available = this.getAvailableProviders().map((provider) => provider.name);
+				const errors = this.getProviderErrors();
+				const lines = [
+					`memory_provider_audit: configured=${configured.length} available=${available.length} errors=${errors.length}`,
+					`configured=${configured.length ? configured.join(",") : "none"}`,
+					`available=${available.length ? available.join(",") : "none"}`,
+					...errors.map(
+						(error) => `error provider=${error.provider} phase=${error.phase} message=${error.message}`,
+					),
+				];
+				return { content: [{ type: "text" as const, text: lines.join("\n") }], details: undefined };
+			},
 		});
 	}
 }

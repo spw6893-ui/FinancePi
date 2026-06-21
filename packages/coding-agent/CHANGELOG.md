@@ -11,6 +11,7 @@
 - Added unsafe-content scanning and orphan-file prevention for core memory research reports.
 - Added compact memory index rollback when core memory research report file writes fail.
 - Added `memory_audit` for compact persistent memory health, capacity, path, and inject-policy inspection.
+- Added `memory_provider_audit` for compact external memory provider state and error inspection.
 - Added `memory_compact` for safe persistent memory target compaction with stale entry-count protection.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
 - Changed external memory provider tool failures to return compact tool errors instead of interrupting the agent tool loop.

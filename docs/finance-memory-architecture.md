@@ -232,6 +232,7 @@ memory_compact
 memory_session_search
 memory_research_report
 memory_audit
+memory_provider_audit
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -274,6 +275,16 @@ Finance 使用时固定 `namespace="finance"`。
 - 用户问“现在记住了什么/内存状态怎样”时先看概览。
 - 写入前检查 target 容量压力。
 - 排查是否有空 target、接近容量上限或路径异常。
+
+### `memory_provider_audit`
+
+审计外部 memory provider 的配置、可用状态和错误记录。
+
+用途：
+
+- 外部/Hermes-style memory 结果缺失或不一致时先看 provider 状态。
+- 排查 provider 初始化、prefetch、sync、shutdown 或自带工具调用失败。
+- 输出 compact configured/available/errors，不暴露 provider 内部大 payload。
 
 ### `memory_write`
 
@@ -521,7 +532,7 @@ Finance extension 只负责：
 - 新增 extension API：`registerMemoryNamespace`。
 - AgentSession 统一注入 memory block。
 - Finance extension 不再手写 memory prompt 拼接。
-- Core 自动暴露 `memory_list/read/search/write/session_search` 对应的 `memory_*` 工具，包括 `memory_session_search`。
+- Core 自动暴露 `memory_list/read/search/write/session_search/provider_audit` 对应的 `memory_*` 工具，包括 `memory_session_search` 和 `memory_provider_audit`。
 - 新增 extension API：`registerMemoryProvider`。
 - AgentSession 初始化 provider 并追加 provider prompt block。
 - 每轮 prompt 前调用 provider `prefetch()`，把 compact recall 临时追加到当前 turn system prompt，且不写入 session。
@@ -590,6 +601,7 @@ interface MemoryProvider {
 - 后续会话能按 symbol、主题、偏好搜索 prior memory。
 - Persistent memory search 能返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
+- `memory_provider_audit` 能查看外部 memory provider 配置、可用状态和错误记录。
 - `memory_compact` 能把过长 target 压缩为单条 curated entry，并阻止 stale compaction 覆盖更新后的 memory。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - tool result compact，不再大 JSON 污染上下文。
@@ -619,6 +631,7 @@ interface MemoryProvider {
 - 2026-06-21：补充 `memory_research_report` 的 report 内容安全扫描和无孤立文件写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：新增 `memory_audit`，用于 compact memory health/capacity 审计。
+- 2026-06-21：新增 `memory_provider_audit`，用于外部 memory provider 状态和错误审计。
 - 2026-06-21：新增 `memory_compact`，用于安全压缩 long-lived memory target。
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮 FinancePi。
 - 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。

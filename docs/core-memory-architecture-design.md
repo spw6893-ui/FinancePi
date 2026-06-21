@@ -291,6 +291,7 @@ memory_compact
 memory_session_search
 memory_research_report
 memory_audit
+memory_provider_audit
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -306,6 +307,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_research_report` 把长研究报告写入 `.pi/research/*.md`，再把 compact summary、report path 和 source paths 写进 memory index。
 - `memory_audit` 返回 namespace/target/path/usage/inject/risk 的 compact health view，方便模型和用户审计 memory 状态。
 - `memory_compact` 将 target 压缩为单条 curated memory，适合容量压力或长期研究摘要收束。
+- `memory_provider_audit` 返回 configured/available provider 和 provider error 的 compact view，方便审计外部记忆服务状态。
 
 ### `MemoryProvider`
 
@@ -498,6 +500,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 后续会话能搜索 prior preference、watchlist、symbol thesis。
 - `memory_search` 返回 score/snippet，并优先返回覆盖更多 query terms 的 memory 命中。
 - `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
+- `memory_provider_audit` 能查看外部 memory provider 配置、可用状态和错误记录。
 - `memory_compact` 能把过长 target 安全压缩为单条 curated entry，并在条目数不匹配时拒绝覆盖。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - 工具结果保持 compact，完整数据落 artifact。
@@ -550,6 +553,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：补充 `memory_research_report` 安全扫描和无孤立 report 写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：新增 `memory_audit` 设计说明，用于 compact memory health/capacity 审计。
+- 2026-06-21：新增 `memory_provider_audit`，用于外部 memory provider 状态和错误审计。
 - 2026-06-21：新增 `memory_compact` 设计说明，用于基于已读条目数的安全压缩写回。
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮主 agent。
 - 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。

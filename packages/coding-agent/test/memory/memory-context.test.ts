@@ -58,6 +58,7 @@ describe("buildMemorySystemPromptBlock", () => {
 			expect(block).toContain("Use memory_session_search");
 			expect(block).toContain("Use memory_write when the user explicitly asks you to remember");
 			expect(block).toContain("Use memory_audit and memory_compact");
+			expect(block).toContain("Use memory_provider_audit");
 			expect(block).toContain("finance/user");
 			expect(block).toContain("用户偏好免费公开数据源");
 			expect(block).not.toContain("old research note");

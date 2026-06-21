@@ -142,6 +142,7 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_session_search");
 				expect(allToolNames).toContain("memory_research_report");
 				expect(allToolNames).toContain("memory_audit");
+				expect(allToolNames).toContain("memory_provider_audit");
 				expect(session.getActiveToolNames()).toEqual([
 					"memory_list",
 					"memory_read",
@@ -151,6 +152,7 @@ describe("finance memory namespace", () => {
 					"memory_session_search",
 					"memory_research_report",
 					"memory_audit",
+					"memory_provider_audit",
 				]);
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
 				expect(session.systemPrompt).toContain("- memory_session_search: Search prior project session memory");
@@ -319,6 +321,51 @@ describe("finance memory namespace", () => {
 				expect(getText(output)).toContain("provider=provider-tools");
 				expect(getText(output)).toContain("tool=memory_external_lookup");
 				expect(getText(output)).toContain("provider lookup failed");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
+	it("exposes memory provider audit through AgentSession", async () => {
+		await withTempCwd(async (cwd) => {
+			const failing: MemoryProvider = {
+				name: "failing-provider",
+				isAvailable: () => true,
+				initialize: async () => {
+					throw new Error("provider init failed");
+				},
+			};
+			const healthy: MemoryProvider = {
+				name: "healthy-provider",
+				isAvailable: () => true,
+				initialize: async () => {},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<memory-provider-audit>",
+						factory: (pi) => {
+							pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+							pi.registerMemoryProvider(failing);
+							pi.registerMemoryProvider(healthy);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				await session.bindExtensions({});
+				const tool = session.getToolDefinition("memory_provider_audit");
+				const output = await tool?.execute("audit", {}, undefined, undefined, { cwd } as never);
+
+				expect(session.getActiveToolNames()).toContain("memory_provider_audit");
+				expect(getText(output)).toContain("memory_provider_audit: configured=2 available=1 errors=1");
+				expect(getText(output)).toContain("available=healthy-provider");
+				expect(getText(output)).toContain("error provider=failing-provider");
+				expect(getText(output)).toContain("provider init failed");
 			} finally {
 				session.dispose();
 			}
