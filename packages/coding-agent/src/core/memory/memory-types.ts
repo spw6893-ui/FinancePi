@@ -49,6 +49,18 @@ export interface MemoryWriteResult {
 	currentEntries?: string[];
 }
 
+export interface MemoryCompactResult {
+	success: boolean;
+	done?: boolean;
+	namespace: string;
+	target: string;
+	message?: string;
+	error?: string;
+	usage: string;
+	entryCount: number;
+	previousEntryCount: number;
+}
+
 export interface MemoryListResult {
 	entries: MemoryTargetState[];
 }

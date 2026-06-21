@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { scanMemoryContent, validateMemoryEntryMetadata } from "./memory-security.ts";
 import type {
 	MemoryAuditResult,
+	MemoryCompactResult,
 	MemoryEntryOperation,
 	MemoryListResult,
 	MemoryNamespaceConfig,
@@ -293,6 +294,51 @@ export class MemoryStore {
 		};
 	}
 
+	async compact(options: {
+		namespace: string;
+		target: string;
+		content: string;
+		sourceEntryCount: number;
+	}): Promise<MemoryCompactResult> {
+		const resolved = this.resolveTarget(options.namespace, options.target);
+		const entries = await this.readEntries(resolved.absolutePath);
+		if (entries.length !== options.sourceEntryCount) {
+			return this.compactError(
+				resolved,
+				`source_entry_count_mismatch expected=${options.sourceEntryCount} actual=${entries.length}`,
+				entries.length,
+			);
+		}
+
+		const content = options.content.trim();
+		if (!content) return this.compactError(resolved, "content is required.", entries.length);
+		const scanError = scanMemoryContent(content);
+		if (scanError) return this.compactError(resolved, scanError, entries.length);
+		const metadataError = validateMemoryEntryMetadata(content, resolved.target);
+		if (metadataError) return this.compactError(resolved, metadataError, entries.length);
+
+		const chars = charsForEntries([content]);
+		if (chars > resolved.target.charLimit) {
+			return this.compactError(
+				resolved,
+				`Compacted memory would exceed limit: ${chars}/${resolved.target.charLimit} chars.`,
+				entries.length,
+			);
+		}
+
+		await this.writeEntries(resolved.absolutePath, [content]);
+		return {
+			success: true,
+			done: true,
+			namespace: resolved.config.namespace,
+			target: resolved.target.target,
+			message: "Compacted target to one entry.",
+			usage: usageText(chars, resolved.target.charLimit),
+			entryCount: 1,
+			previousEntryCount: entries.length,
+		};
+	}
+
 	getSystemSnapshotTargets(): MemoryTargetState[] {
 		const states: MemoryTargetState[] = [];
 		for (const namespace of this.namespaces.values()) {
@@ -405,6 +451,19 @@ export class MemoryStore {
 			usage: usageText(charsForEntries(currentEntries), resolved.target.charLimit),
 			entryCount: currentEntries.length,
 			currentEntries,
+		};
+	}
+
+	private compactError(resolved: ResolvedTarget, error: string, previousEntryCount: number): MemoryCompactResult {
+		const state = this.getTargetStateSync(resolved.config, resolved.target);
+		return {
+			success: false,
+			namespace: resolved.config.namespace,
+			target: resolved.target.target,
+			error,
+			usage: usageText(state.chars, resolved.target.charLimit),
+			entryCount: state.entries.length,
+			previousEntryCount,
 		};
 	}
 }

@@ -62,6 +62,7 @@ describe("MemoryManager", () => {
 				"memory_read",
 				"memory_search",
 				"memory_write",
+				"memory_compact",
 				"memory_session_search",
 				"memory_research_report",
 				"memory_audit",

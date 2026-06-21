@@ -138,6 +138,7 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_read");
 				expect(allToolNames).toContain("memory_search");
 				expect(allToolNames).toContain("memory_write");
+				expect(allToolNames).toContain("memory_compact");
 				expect(allToolNames).toContain("memory_session_search");
 				expect(allToolNames).toContain("memory_research_report");
 				expect(allToolNames).toContain("memory_audit");
@@ -146,6 +147,7 @@ describe("finance memory namespace", () => {
 					"memory_read",
 					"memory_search",
 					"memory_write",
+					"memory_compact",
 					"memory_session_search",
 					"memory_research_report",
 					"memory_audit",

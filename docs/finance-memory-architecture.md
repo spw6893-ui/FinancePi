@@ -228,6 +228,7 @@ memory_list
 memory_read
 memory_search
 memory_write
+memory_compact
 memory_session_search
 memory_research_report
 memory_audit
@@ -290,6 +291,16 @@ Finance 使用时固定 `namespace="finance"`。
 - 成功只返回 usage、entry count、message。
 - 失败才返回 current entries 供模型合并。
 - 不保存 raw price、raw news、大工具输出、secrets、unsourced claims。
+
+### `memory_compact`
+
+把一个 target 压缩为单条 curated memory。
+
+用途：
+
+- `memory_audit` 显示 target 接近容量上限时，先 read/search，再压缩旧条目。
+- 深度研究多次迭代后，把重复或过时条目收束成一个带 `asOf`/`createdAt` 的摘要。
+- 调用时必须传入 `sourceEntryCount`；如果和当前条目数不一致，工具拒绝覆盖，避免 stale compaction 覆盖新记忆。
 
 ### `memory_session_search`
 
@@ -573,6 +584,7 @@ interface MemoryProvider {
 - 后续会话能按 symbol、主题、偏好搜索 prior memory。
 - Persistent memory search 能返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
+- `memory_compact` 能把过长 target 压缩为单条 curated entry，并阻止 stale compaction 覆盖更新后的 memory。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - tool result compact，不再大 JSON 污染上下文。
 - 完整数据仍落 artifact，memory 只存摘要、偏好和路径。
@@ -599,6 +611,7 @@ interface MemoryProvider {
 - 2026-06-21：补充 `memory_research_report` 的 report 内容安全扫描和无孤立文件写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
 - 2026-06-21：新增 `memory_audit`，用于 compact memory health/capacity 审计。
+- 2026-06-21：新增 `memory_compact`，用于安全压缩 long-lived memory target。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

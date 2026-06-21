@@ -118,6 +118,61 @@ describe("memory tools", () => {
 		});
 	});
 
+	it("compacts a target only when the caller has read the current entry count", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					"symbol=NVDA | asOf=2026-06-21 | Long Blackwell supply note with many details.",
+					"symbol=NVDA | asOf=2026-06-21 | Data center margin note with many details.",
+				].join("\n§\n"),
+			);
+			const tools = createMemoryTools([namespace()]);
+			const compact = tools.find((tool) => tool.name === "memory_compact");
+			const read = tools.find((tool) => tool.name === "memory_read");
+
+			const stale = await compact?.execute(
+				"compact",
+				{
+					namespace: "finance",
+					target: "research",
+					sourceEntryCount: 1,
+					content: "symbol=NVDA | asOf=2026-06-21 | Compact Blackwell and margin research summary.",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+			const compacted = await compact?.execute(
+				"compact",
+				{
+					namespace: "finance",
+					target: "research",
+					sourceEntryCount: 2,
+					content: "symbol=NVDA | asOf=2026-06-21 | Compact Blackwell and margin research summary.",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+			const readResult = await read?.execute(
+				"read",
+				{ namespace: "finance", target: "research" },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((stale as any).isError).toBe(true);
+			expect(text(stale)).toContain("source_entry_count_mismatch");
+			expect(text(compacted)).toContain("memory_compact: success");
+			expect(text(compacted)).toContain("entries=1");
+			expect(text(readResult)).toContain("Compact Blackwell and margin research summary");
+			expect(text(readResult)).not.toContain("Long Blackwell supply note");
+		});
+	});
+
 	it("reports write errors compactly without changing memory", async () => {
 		await withTempCwd(async (cwd) => {
 			const [, read, , write] = createMemoryTools([namespace()]);

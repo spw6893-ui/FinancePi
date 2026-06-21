@@ -252,6 +252,34 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
+	const compactTool = defineTool({
+		name: "memory_compact",
+		label: "Memory Compact",
+		description:
+			"Replace one persistent memory target with a single compact curated entry after reading the current entries.",
+		promptSnippet: "Compact a persistent memory target",
+		promptGuidelines: [
+			"Use memory_compact after memory_audit/read shows a target is too large or stale.",
+			"Read the target first and pass the observed sourceEntryCount so stale compactions do not overwrite newer memory.",
+			"Write a compact, sourced summary only; do not save raw data dumps, secrets, or current market prices.",
+		],
+		parameters: Type.Object({
+			namespace: Type.String({ description: "Memory namespace, for example finance." }),
+			target: Type.String({ description: "Memory target inside the namespace." }),
+			sourceEntryCount: Type.Number({
+				description: "Entry count observed from memory_list, memory_audit, or memory_read before compaction.",
+			}),
+			content: Type.String({ description: "Single compact replacement entry for this target." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const result = await createStore(ctx, namespaces).compact(params);
+			const text = result.success
+				? `memory_compact: success namespace=${result.namespace} target=${result.target} previousEntries=${result.previousEntryCount} entries=${result.entryCount} usage=${result.usage} message=${result.message}`
+				: `memory_compact: error namespace=${result.namespace} target=${result.target} previousEntries=${result.previousEntryCount} entries=${result.entryCount} usage=${result.usage}\nerror=${result.error}`;
+			return { content: [{ type: "text" as const, text }], details: result, isError: !result.success };
+		},
+	});
+
 	const sessionSearchTool = defineTool({
 		name: "memory_session_search",
 		label: "Memory Session Search",
@@ -377,7 +405,7 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
-	return [listTool, readTool, searchTool, writeTool, sessionSearchTool, researchReportTool, auditTool];
+	return [listTool, readTool, searchTool, writeTool, compactTool, sessionSearchTool, researchReportTool, auditTool];
 }
 
 function formatProviderToolResult(result: unknown): string {
