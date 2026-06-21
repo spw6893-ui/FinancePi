@@ -379,7 +379,8 @@ FinancePi 的目标 loop：
 5. 检查 `sourceHealth`、`degradedReasons`、`asOf/latestAt`、artifact path。
 6. 必要时继续搜索网页、读取 artifact 或补充比较数据。
 7. 输出自然分析，而不是固定模板。
-8. 如果本轮产生可复用偏好、watchlist、thesis 或 workflow lesson，再考虑写入 memory。
+8. 如果用户明确要求“记住”，或本轮产生可复用偏好、watchlist、thesis 或 workflow lesson，使用 `memory_write` 写入 compact memory。
+9. 如果 `memory_audit` 显示 target 接近容量上限、重复或陈旧，先读取当前内容，再用 `memory_compact` 安全收束。
 
 Memory 的作用是提升判断和连续性，不是替代分析过程。
 
@@ -549,6 +550,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：新增 `memory_audit` 设计说明，用于 compact memory health/capacity 审计。
 - 2026-06-21：新增 `memory_compact` 设计说明，用于基于已读条目数的安全压缩写回。
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮主 agent。
+- 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。
