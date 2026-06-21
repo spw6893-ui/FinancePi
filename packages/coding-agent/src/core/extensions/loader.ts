@@ -210,6 +210,16 @@ function createExtensionAPI(
 			runtime.refreshTools();
 		},
 
+		registerMemoryNamespace(namespace): void {
+			runtime.assertActive();
+			const existing = extension.memoryNamespaces.findIndex((item) => item.namespace === namespace.namespace);
+			if (existing >= 0) {
+				extension.memoryNamespaces[existing] = namespace;
+			} else {
+				extension.memoryNamespaces.push(namespace);
+			}
+		},
+
 		registerCommand(name: string, options: Omit<RegisteredCommand, "name" | "sourceInfo">): void {
 			runtime.assertActive();
 			extension.commands.set(name, {
@@ -370,6 +380,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		sourceInfo: createSyntheticSourceInfo(extensionPath, { source, baseDir }),
 		handlers: new Map(),
 		tools: new Map(),
+		memoryNamespaces: [],
 		messageRenderers: new Map(),
 		commands: new Map(),
 		flags: new Map(),

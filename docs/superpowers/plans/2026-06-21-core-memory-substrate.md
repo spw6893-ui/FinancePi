@@ -45,7 +45,7 @@
 - [x] Add finance namespace integration tests.
 - [x] Implement `memory-context.ts`.
 - [x] Register Finance namespace and generic memory tools in `finance-agent-extension.ts`.
-- [x] Append compact Finance memory prompt block in `before_agent_start`.
+- [x] Register memory namespaces through the extension API and append compact memory context in `AgentSession` core prompt rebuild.
 - [x] Add memory guidance to the Finance prompt and market continuation text.
 - [x] Run `npm --prefix packages/coding-agent exec vitest run test/finance/finance-memory-namespace.test.ts`.
 

@@ -19,8 +19,6 @@ import type {
 import { buildTechnicalSnapshot, FinanceClient, FinanceMcpClient } from "@earendil-works/pi-finance";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "./extensions/types.ts";
-import { buildMemorySystemPromptBlock } from "./memory/memory-context.ts";
-import { MemoryStore } from "./memory/memory-store.ts";
 import { createMemoryTools } from "./memory/memory-tools.ts";
 import { createFinanceMemoryNamespace } from "./memory/namespace-registry.ts";
 
@@ -1212,6 +1210,7 @@ ANTHROPIC FINANCIAL-SERVICES MARKET RESEARCHER ADAPTATION:
 `;
 
 export default function financeAgentExtension(pi: ExtensionAPI) {
+	pi.registerMemoryNamespace(financeMemoryNamespace);
 	pi.registerTool(quoteTool);
 	pi.registerTool(historyTool);
 	pi.registerTool(newsTool);
@@ -1230,13 +1229,5 @@ export default function financeAgentExtension(pi: ExtensionAPI) {
 		pi.registerTool(tool);
 	}
 
-	pi.on("before_agent_start", (event, ctx) => ({
-		systemPrompt:
-			event.systemPrompt +
-			"\n\n" +
-			buildMemorySystemPromptBlock(new MemoryStore({ cwd: ctx.cwd, namespaces: [financeMemoryNamespace] }), [
-				financeMemoryNamespace,
-			]) +
-			financePrompt,
-	}));
+	pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt + financePrompt }));
 }

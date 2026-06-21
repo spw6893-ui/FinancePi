@@ -82,6 +82,9 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
+import { buildMemorySystemPromptBlock } from "./memory/memory-context.ts";
+import { MemoryStore } from "./memory/memory-store.ts";
+import type { MemoryNamespaceConfig } from "./memory/memory-types.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import type { ModelRegistry } from "./model-registry.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
@@ -986,6 +989,16 @@ export class AgentSession {
 		return Array.from(unique);
 	}
 
+	private _getMemoryNamespaces(): MemoryNamespaceConfig[] {
+		const namespaces = new Map<string, MemoryNamespaceConfig>();
+		for (const extension of this._resourceLoader.getExtensions().extensions) {
+			for (const namespace of extension.memoryNamespaces ?? []) {
+				namespaces.set(namespace.namespace, namespace);
+			}
+		}
+		return [...namespaces.values()];
+	}
+
 	private _rebuildSystemPrompt(toolNames: string[]): string {
 		const validToolNames = toolNames.filter((name) => this._toolRegistry.has(name));
 		const toolSnippets: Record<string, string> = {};
@@ -1019,7 +1032,16 @@ export class AgentSession {
 			toolSnippets,
 			promptGuidelines,
 		};
-		return buildSystemPrompt(this._baseSystemPromptOptions);
+		const basePrompt = buildSystemPrompt(this._baseSystemPromptOptions);
+		const memoryNamespaces = this._getMemoryNamespaces();
+		if (memoryNamespaces.length === 0) {
+			return basePrompt;
+		}
+		const memoryBlock = buildMemorySystemPromptBlock(
+			new MemoryStore({ cwd: this._cwd, namespaces: memoryNamespaces }),
+			memoryNamespaces,
+		);
+		return `${basePrompt}\n\n${memoryBlock}`;
 	}
 
 	// =========================================================================
