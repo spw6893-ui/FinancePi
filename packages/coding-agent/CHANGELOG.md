@@ -14,6 +14,7 @@
 - Added `memory_provider_audit` for compact external memory provider state and error inspection.
 - Added `memory_compact` for safe persistent memory target compaction with stale entry-count protection.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
+- Changed core memory tool registration to keep core tools ahead of external memory provider tools with the same name.
 - Changed external memory provider tool registration/execution failures to return compact failure paths and appear in provider audit instead of interrupting the agent tool loop.
 - Changed core memory prompt guidance to make explicit remember-write and audit/compact maintenance behavior available to the model.
 - Changed core memory provider lifecycle handling to isolate provider failures and retain provider error audit records.

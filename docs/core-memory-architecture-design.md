@@ -335,6 +335,7 @@ interface MemoryProvider {
 - Provider 只能 additive，不能覆盖 core memory rules。
 - Provider prompt block 追加在 core prompt block 之后。
 - 外部 provider 不应绕过 secret 扫描、时间戳约束和 market freshness 规则。
+- Provider 自带 tool 与 core memory tool 同名时，core memory tool 保持优先，避免外部 provider 覆盖 `memory_write` 等安全边界。
 - 单个 provider 在 `isAvailable`、`initialize`、`systemPromptBlock`、`prefetch`、`syncTurn`、`onSessionEnd` 或 `shutdown` 阶段失败时，只记录 provider error，不中断其他 provider 或主 agent 流程。
 - Provider 自带 tool 的 `getToolDefinitions()` / `handleToolCall()` 失败时，tool 注册或执行返回 compact failure path，不抛出未捕获异常，并写入 provider audit 错误记录。
 
@@ -510,6 +511,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - Memory 不保存 secret、大 JSON、raw news 或 raw price dump。
 - Finance extension 不再手写 memory tools/prompt，core 自动注入。
 - 外部 memory provider 可以注册、初始化并追加 prompt block。
+- 外部 memory provider 自带工具不能覆盖 core memory tools。
 - 外部 memory provider 的 `prefetch()` 结果能进入当前 turn system prompt，且不写入 session。
 - 外部 memory provider 能在已完成 user/assistant turn 后收到 `syncTurn()`。
 - 外部 memory provider 能在 session runtime teardown 时收到 `onSessionEnd()`，再执行 `shutdown()`。
@@ -558,6 +560,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮主 agent。
 - 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。
 - 2026-06-21：补充 provider 自带 memory tool 注册/执行的错误隔离和 audit 记录规则。
+- 2026-06-21：补充 provider 自带 tool 不得覆盖 core memory tools 的注册优先级规则。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

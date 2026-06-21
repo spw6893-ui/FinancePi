@@ -2539,8 +2539,8 @@ export class AgentSession {
 		}));
 		const registeredTools = this._extensionRunner.getAllRegisteredTools();
 		const allCustomTools = [
-			...memoryTools,
 			...memoryProviderTools,
+			...memoryTools,
 			...registeredTools,
 			...this._customTools.map((definition) => ({
 				definition,
