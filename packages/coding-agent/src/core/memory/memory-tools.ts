@@ -6,7 +6,7 @@ import type { MemoryProvider } from "./memory-provider.ts";
 import { scanMemoryReportContent } from "./memory-security.ts";
 import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
-import type { MemoryNamespaceConfig, MemorySearchResult } from "./memory-types.ts";
+import type { MemoryAuditResult, MemoryNamespaceConfig, MemorySearchResult } from "./memory-types.ts";
 
 const namespaceParam = {
 	namespace: Type.Optional(Type.String({ description: "Memory namespace, for example finance." })),
@@ -68,6 +68,16 @@ function formatList(store: MemoryStore, params: { namespace?: string; target?: s
 		...list.entries.map(
 			(entry) =>
 				`${entry.namespace}/${entry.target} | ${entry.relativePath} | layer=${entry.layer} | entries=${entry.entries.length} | chars=${entry.chars}/${entry.charLimit} | inject=${entry.injectPolicy}`,
+		),
+	].join("\n");
+}
+
+function formatAudit(result: MemoryAuditResult): string {
+	return [
+		`memory_audit: namespaces=${result.namespaces} targets=${result.targets} entries=${result.entries} chars=${result.chars}`,
+		...result.targetsDetail.map(
+			(target) =>
+				`${target.namespace}/${target.target} | ${target.relativePath} | layer=${target.layer} | entries=${target.entries} | chars=${target.chars}/${target.charLimit} | usage=${target.usagePct}% | inject=${target.injectPolicy} | risk=${target.risk} | ${target.description}`,
 		),
 	].join("\n");
 }
@@ -148,6 +158,28 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 						].join("\n"),
 					},
 				],
+				details: undefined,
+			};
+		},
+	});
+
+	const auditTool = defineTool({
+		name: "memory_audit",
+		label: "Memory Audit",
+		description:
+			"Audit persistent memory namespaces, targets, usage, paths, inject policies, and compact risk state.",
+		promptSnippet: "Audit persistent memory health and capacity",
+		promptGuidelines: [
+			"Use memory_audit when you need a compact overview of memory state, capacity pressure, paths, and inject policies.",
+		],
+		parameters: Type.Object({
+			...namespaceParam,
+			...targetParam,
+			...layerParam,
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return {
+				content: [{ type: "text" as const, text: formatAudit(createStore(ctx, namespaces).audit(params)) }],
 				details: undefined,
 			};
 		},
@@ -345,7 +377,7 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
-	return [listTool, readTool, searchTool, writeTool, sessionSearchTool, researchReportTool];
+	return [listTool, readTool, searchTool, writeTool, sessionSearchTool, researchReportTool, auditTool];
 }
 
 function formatProviderToolResult(result: unknown): string {

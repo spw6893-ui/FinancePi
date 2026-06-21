@@ -289,6 +289,7 @@ memory_search
 memory_write
 memory_session_search
 memory_research_report
+memory_audit
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -301,6 +302,7 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_search` 搜索 persistent memory 时返回 compact score/snippet，并按 query term 覆盖度和命中次数排序。
 - `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time/score/snippet 命中，不回显完整 session 或 provider payload。
 - `memory_research_report` 把长研究报告写入 `.pi/research/*.md`，再把 compact summary、report path 和 source paths 写进 memory index。
+- `memory_audit` 返回 namespace/target/path/usage/inject/risk 的 compact health view，方便模型和用户审计 memory 状态。
 
 ### `MemoryProvider`
 
@@ -489,6 +491,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 用户说“记住”时，agent 能写入 `.pi/memory/finance`。
 - 后续会话能搜索 prior preference、watchlist、symbol thesis。
 - `memory_search` 返回 score/snippet，并优先返回覆盖更多 query terms 的 memory 命中。
+- `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - 工具结果保持 compact，完整数据落 artifact。
 - 长研究内容能通过 `memory_research_report` 落 `.pi/research/*.md`，memory 只保存 compact index。
@@ -537,6 +540,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：增强 `memory_search` 设计说明，补充 persistent memory 的相关性排序和 snippet。
 - 2026-06-21：补充 `memory_research_report` 安全扫描和无孤立 report 写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
+- 2026-06-21：新增 `memory_audit` 设计说明，用于 compact memory health/capacity 审计。
 - 2026-06-21：补充 provider `prefetch()` 与当前 turn system prompt 的临时召回注入说明。
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
 - 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。

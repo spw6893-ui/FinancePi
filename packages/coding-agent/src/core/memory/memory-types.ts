@@ -53,6 +53,28 @@ export interface MemoryListResult {
 	entries: MemoryTargetState[];
 }
 
+export interface MemoryAuditTarget {
+	namespace: string;
+	target: string;
+	layer: MemoryLayer;
+	relativePath: string;
+	entries: number;
+	chars: number;
+	charLimit: number;
+	usagePct: number;
+	injectPolicy: MemoryInjectPolicy;
+	risk: "ok" | "empty" | "near_limit" | "over_limit";
+	description: string;
+}
+
+export interface MemoryAuditResult {
+	namespaces: number;
+	targets: number;
+	entries: number;
+	chars: number;
+	targetsDetail: MemoryAuditTarget[];
+}
+
 export interface MemoryReadResult {
 	namespace: string;
 	target: string;

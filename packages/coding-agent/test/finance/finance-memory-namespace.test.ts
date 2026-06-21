@@ -140,6 +140,7 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_write");
 				expect(allToolNames).toContain("memory_session_search");
 				expect(allToolNames).toContain("memory_research_report");
+				expect(allToolNames).toContain("memory_audit");
 				expect(session.getActiveToolNames()).toEqual([
 					"memory_list",
 					"memory_read",
@@ -147,6 +148,7 @@ describe("finance memory namespace", () => {
 					"memory_write",
 					"memory_session_search",
 					"memory_research_report",
+					"memory_audit",
 				]);
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
 				expect(session.systemPrompt).toContain("- memory_session_search: Search prior project session memory");

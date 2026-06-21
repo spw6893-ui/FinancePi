@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { scanMemoryContent, validateMemoryEntryMetadata } from "./memory-security.ts";
 import type {
+	MemoryAuditResult,
 	MemoryEntryOperation,
 	MemoryListResult,
 	MemoryNamespaceConfig,
@@ -39,6 +40,10 @@ function charsForEntries(entries: string[]): number {
 function usageText(chars: number, limit: number): string {
 	const pct = limit > 0 ? Math.min(100, Math.floor((chars / limit) * 100)) : 0;
 	return `${pct}% - ${chars}/${limit} chars`;
+}
+
+function usagePct(chars: number, limit: number): number {
+	return limit > 0 ? Math.min(100, Math.floor((chars / limit) * 100)) : 0;
 }
 
 function queryTerms(query: string, ignoreCase: boolean): string[] {
@@ -98,6 +103,39 @@ export class MemoryStore {
 			}
 		}
 		return { entries };
+	}
+
+	audit(options: { namespace?: string; target?: string; layer?: string } = {}): MemoryAuditResult {
+		const states = this.list(options).entries;
+		return {
+			namespaces: new Set(states.map((state) => state.namespace)).size,
+			targets: states.length,
+			entries: states.reduce((sum, state) => sum + state.entries.length, 0),
+			chars: states.reduce((sum, state) => sum + state.chars, 0),
+			targetsDetail: states.map((state) => {
+				const pct = usagePct(state.chars, state.charLimit);
+				return {
+					namespace: state.namespace,
+					target: state.target,
+					layer: state.layer,
+					relativePath: state.relativePath,
+					entries: state.entries.length,
+					chars: state.chars,
+					charLimit: state.charLimit,
+					usagePct: pct,
+					injectPolicy: state.injectPolicy,
+					risk:
+						state.chars > state.charLimit
+							? "over_limit"
+							: pct >= 80
+								? "near_limit"
+								: state.entries.length === 0
+									? "empty"
+									: "ok",
+					description: state.description,
+				};
+			}),
+		};
 	}
 
 	async read(options: {

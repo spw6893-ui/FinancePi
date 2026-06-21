@@ -64,6 +64,7 @@ describe("MemoryManager", () => {
 				"memory_write",
 				"memory_session_search",
 				"memory_research_report",
+				"memory_audit",
 			]);
 			expect(manager.buildSystemPromptBlock()).toContain("CORE MEMORY CONTEXT");
 			expect(manager.buildSystemPromptBlock()).toContain("用户偏好免费公开数据源");

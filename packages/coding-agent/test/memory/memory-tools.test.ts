@@ -97,6 +97,27 @@ describe("memory tools", () => {
 		});
 	});
 
+	it("audits memory namespaces with compact health and risk summary", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/USER.md"),
+				["用户偏好免费数据源。", "用户不希望固定模板。"].join("\n§\n"),
+			);
+			const audit = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_audit");
+
+			const result = await audit?.execute("audit", { namespace: "finance" }, undefined, undefined, { cwd } as never);
+			const output = text(result);
+
+			expect(output).toContain("memory_audit: namespaces=1 targets=2 entries=2");
+			expect(output).toContain("finance/user | .pi/memory/finance/USER.md | layer=user");
+			expect(output).toContain("entries=2");
+			expect(output).toContain("inject=always");
+			expect(output).toContain("risk=ok");
+			expect(output).toContain("finance/research");
+		});
+	});
+
 	it("reports write errors compactly without changing memory", async () => {
 		await withTempCwd(async (cwd) => {
 			const [, read, , write] = createMemoryTools([namespace()]);

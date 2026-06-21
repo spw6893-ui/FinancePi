@@ -230,6 +230,7 @@ memory_search
 memory_write
 memory_session_search
 memory_research_report
+memory_audit
 ```
 
 Finance 使用时固定 `namespace="finance"`。
@@ -262,6 +263,16 @@ Finance 使用时固定 `namespace="finance"`。
 
 - 在 search 命中后读取上下文。
 - 不一次性把所有 memory 塞入 prompt。
+
+### `memory_audit`
+
+审计 persistent memory 的 namespace、target、路径、容量、条目数、注入策略和风险状态。
+
+用途：
+
+- 用户问“现在记住了什么/内存状态怎样”时先看概览。
+- 写入前检查 target 容量压力。
+- 排查是否有空 target、接近容量上限或路径异常。
 
 ### `memory_write`
 
@@ -561,6 +572,7 @@ interface MemoryProvider {
 - 用户明确说“记住”时，agent 能写入 `.pi/memory/finance`。
 - 后续会话能按 symbol、主题、偏好搜索 prior memory。
 - Persistent memory search 能返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
+- `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
 - 当前市场分析不会把 memory 里的旧价格当实时价格。
 - tool result compact，不再大 JSON 污染上下文。
 - 完整数据仍落 artifact，memory 只存摘要、偏好和路径。
@@ -586,6 +598,7 @@ interface MemoryProvider {
 - 2026-06-21：增强 `memory_search`，补充 persistent memory 的 query coverage 排序和 snippet 输出。
 - 2026-06-21：补充 `memory_research_report` 的 report 内容安全扫描和无孤立文件写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
+- 2026-06-21：新增 `memory_audit`，用于 compact memory health/capacity 审计。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。

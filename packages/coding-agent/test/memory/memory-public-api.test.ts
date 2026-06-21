@@ -51,9 +51,12 @@ describe("memory public API", () => {
 			});
 
 			const result = await manager.getStore().search({ namespace: "finance", query: "NVDA capex" });
+			const audit = manager.getStore().audit({ namespace: "finance" });
 
 			expect(result.matches[0].score).toBeGreaterThan(0);
 			expect(result.matches[0].snippet).toContain("NVDA");
+			expect(audit.targetsDetail[0].risk).toBe("ok");
+			expect(audit.entries).toBe(1);
 		});
 	});
 
