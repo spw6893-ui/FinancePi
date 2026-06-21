@@ -166,6 +166,15 @@ export { default as financeAgentExtension } from "./core/finance-agent-extension
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
 export { buildMemorySystemPromptBlock } from "./core/memory/memory-context.ts";
 export { MemoryManager, type MemoryManagerOptions } from "./core/memory/memory-manager.ts";
+export type {
+	MemoryProvider,
+	MemoryProviderInitContext,
+	MemoryProviderTool,
+	MemoryRecallContext,
+	MemorySessionContext,
+	MemorySyncContext,
+	MemoryTurn,
+} from "./core/memory/memory-provider.ts";
 export { MEMORY_ENTRY_DELIMITER, MemoryStore } from "./core/memory/memory-store.ts";
 export { createMemoryTools } from "./core/memory/memory-tools.ts";
 export type {
