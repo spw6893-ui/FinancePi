@@ -14,11 +14,13 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import type {
 	ExtensionAPI,
 	ExtensionFactory,
+	MemoryProvider,
 	SessionBeforeForkEvent,
 	SessionBeforeSwitchEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
 } from "../../src/index.ts";
+import { createFinanceMemoryNamespace } from "../../src/index.ts";
 
 type RecordedSessionEvent =
 	| SessionBeforeSwitchEvent
@@ -204,6 +206,61 @@ describe("AgentSessionRuntime characterization", () => {
 			{ type: "session_shutdown", reason: "resume", targetSessionFile: originalSessionFile },
 			{ type: "session_start", reason: "resume", previousSessionFile: secondSessionFile },
 		]);
+	});
+
+	it("notifies memory providers before tearing down a session runtime", async () => {
+		const memoryEvents: string[] = [];
+		const provider: MemoryProvider = {
+			name: "runtime-memory",
+			isAvailable: () => true,
+			initialize: async () => {
+				memoryEvents.push("init");
+			},
+			onSessionEnd: async (messages, ctx) => {
+				memoryEvents.push(`end:${messages.length}:${ctx.sessionId ?? "none"}`);
+			},
+			shutdown: async () => {
+				memoryEvents.push("shutdown");
+			},
+		};
+		const { runtime } = await createRuntimeForTest((pi: ExtensionAPI) => {
+			pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+			pi.registerMemoryProvider(provider);
+		});
+		const sessionId = runtime.session.sessionId;
+		await runtime.session.prompt("remember this");
+
+		const result = await runtime.newSession();
+
+		expect(result.cancelled).toBe(false);
+		expect(memoryEvents).toEqual(["init", `end:2:${sessionId}`, "shutdown"]);
+	});
+
+	it("still shuts down memory providers when onSessionEnd fails", async () => {
+		const memoryEvents: string[] = [];
+		const provider: MemoryProvider = {
+			name: "runtime-memory",
+			isAvailable: () => true,
+			initialize: async () => {
+				memoryEvents.push("init");
+			},
+			onSessionEnd: async () => {
+				memoryEvents.push("end");
+				throw new Error("memory end failed");
+			},
+			shutdown: async () => {
+				memoryEvents.push("shutdown");
+			},
+		};
+		const { runtime } = await createRuntimeForTest((pi: ExtensionAPI) => {
+			pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+			pi.registerMemoryProvider(provider);
+		});
+
+		const result = await runtime.newSession();
+
+		expect(result.cancelled).toBe(false);
+		expect(memoryEvents).toEqual(["init", "end", "shutdown"]);
 	});
 
 	it("honors session_before_switch cancellation for new and resume", async () => {

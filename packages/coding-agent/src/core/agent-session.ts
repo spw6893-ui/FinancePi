@@ -325,6 +325,7 @@ export class AgentSession {
 	private _marketResearchContinuationIds = new Set<string>();
 	private _memoryManager?: MemoryManager;
 	private _memoryProviderSystemPromptBlock = "";
+	private _memoryProvidersClosed = false;
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -868,9 +869,29 @@ export class AgentSession {
 			"This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
 		);
 		this._disconnectFromAgent();
-		void this._memoryManager?.shutdownProviders().catch(() => {});
+		if (!this._memoryProvidersClosed) {
+			void this._memoryManager?.shutdownProviders().catch(() => {});
+			this._memoryProvidersClosed = true;
+		}
 		this._eventListeners = [];
 		cleanupSessionResources(this.sessionId);
+	}
+
+	async closeMemoryProviders(): Promise<void> {
+		const manager = this._memoryManager;
+		if (!manager || this._memoryProvidersClosed) return;
+		try {
+			await manager.onSessionEnd(this.messages, { sessionId: this.sessionId });
+		} catch (error) {
+			this._extensionRunner.emitError({
+				extensionPath: "<core:memory>",
+				event: "memory_session_end",
+				error: error instanceof Error ? error.message : String(error),
+			});
+		} finally {
+			await manager.shutdownProviders();
+			this._memoryProvidersClosed = true;
+		}
 	}
 
 	// =========================================================================
@@ -2618,6 +2639,7 @@ export class AgentSession {
 		this._applyExtensionBindings(this._extensionRunner);
 		this._memoryManager = undefined;
 		this._memoryProviderSystemPromptBlock = "";
+		this._memoryProvidersClosed = false;
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)

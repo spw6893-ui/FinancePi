@@ -331,6 +331,7 @@ registerMemoryProvider(provider)
 5. `AgentSession` 自动注册 core memory tools。
 6. `AgentSession` 重建 system prompt，并追加 core memory prompt block。
 7. 普通 assistant turn 完成后，`AgentSession` 将最近的 user/assistant 文本同步给已初始化 provider 的 `syncTurn()`。
+8. Session runtime 关闭、切换、新建、恢复或 fork 旧 session 前，会调用 provider 的 `onSessionEnd()`，随后 `shutdown()`。
 
 这让 memory 成为 core 能力，而不是某个 extension 手动拼 prompt 的临时能力。
 
@@ -466,6 +467,7 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - Finance extension 不再手写 memory tools/prompt，core 自动注入。
 - 外部 memory provider 可以注册、初始化并追加 prompt block。
 - 外部 memory provider 能在已完成 user/assistant turn 后收到 `syncTurn()`。
+- 外部 memory provider 能在 session runtime teardown 时收到 `onSessionEnd()`，再执行 `shutdown()`。
 - 模型能用 `memory_session_search` 召回当前项目历史 session 的 compact 讨论片段。
 - 单元测试覆盖 store、tools、context、manager、public API 和 finance namespace。
 
@@ -496,5 +498,6 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 ## Changelog
 
 - 2026-06-21：补充 provider `syncTurn()` 与 completed assistant turn 的自动同步说明。
+- 2026-06-21：补充 provider `onSessionEnd()` 与 session runtime teardown 的生命周期说明。
 - 2026-06-21：新增 `memory_session_search` 设计说明，用于当前项目历史 session 召回。
 - 2026-06-21：新增 core memory architecture design，整理 Pi core、Finance namespace 和 Hermes-style provider 的一体化设计。
