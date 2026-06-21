@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
 import type { MemoryProvider } from "./memory-provider.ts";
+import { scanMemoryReportContent } from "./memory-security.ts";
 import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
 import type { MemoryNamespaceConfig, MemorySearchResult } from "./memory-types.ts";
@@ -45,12 +46,14 @@ function assertProjectRelativePath(cwd: string, path: string): string {
 	return path;
 }
 
-async function writeResearchReportFile(cwd: string, title: string, content: string): Promise<string> {
-	const relativePath = `.pi/research/${utcStamp()}-${slugify(title)}.md`;
+function buildResearchReportPath(title: string): string {
+	return `.pi/research/${utcStamp()}-${slugify(title)}.md`;
+}
+
+async function writeResearchReportFile(cwd: string, relativePath: string, content: string): Promise<void> {
 	const absolutePath = join(cwd, relativePath);
 	await mkdir(join(cwd, ".pi", "research"), { recursive: true });
 	await writeFile(absolutePath, content, "utf8");
-	return relativePath;
 }
 
 function createStore(ctx: ExtensionContext, namespaces: MemoryNamespaceConfig[]): MemoryStore {
@@ -280,8 +283,16 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const reportScanError = scanMemoryReportContent(params.content);
+			if (reportScanError) {
+				return {
+					content: [{ type: "text" as const, text: `memory_research_report: error ${reportScanError}` }],
+					details: { error: reportScanError },
+					isError: true,
+				};
+			}
 			const sourcePaths = (params.sourcePaths ?? []).map((path) => assertProjectRelativePath(ctx.cwd, path));
-			const reportPath = await writeResearchReportFile(ctx.cwd, params.title, params.content);
+			const reportPath = buildResearchReportPath(params.title);
 			const indexEntry = [
 				params.summary.trim(),
 				`reportPath=${reportPath}`,
@@ -296,6 +307,9 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 				action: "add",
 				content: indexEntry,
 			});
+			if (result.success) {
+				await writeResearchReportFile(ctx.cwd, reportPath, params.content);
+			}
 			return {
 				content: [
 					{

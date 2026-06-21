@@ -19,7 +19,7 @@ const MEMORY_TIMESTAMP_PATTERN = /\b(?:asOf|createdAt)\s*=\s*\d{4}-\d{2}-\d{2}(?
 const MARKET_SENSITIVE_PATTERN =
 	/\b(?:symbol|ticker)\s*=|\b(?:price|revenue|earnings|eps|margin|volume|valuation|thesis|risk|catalyst)\b/i;
 
-export function scanMemoryContent(content: string): string | undefined {
+function scanUnsafeContent(content: string): string | undefined {
 	for (const { id, pattern } of SECRET_PATTERNS) {
 		if (pattern.test(content)) return `Blocked memory content: potential secret detected (${id}).`;
 	}
@@ -29,10 +29,20 @@ export function scanMemoryContent(content: string): string | undefined {
 	if (INVISIBLE_UNICODE_PATTERN.test(content)) {
 		return "Blocked memory content: invisible Unicode control character detected.";
 	}
+	return undefined;
+}
+
+export function scanMemoryContent(content: string): string | undefined {
+	const unsafeError = scanUnsafeContent(content);
+	if (unsafeError) return unsafeError;
 	if (content.length > 4000) {
 		return "Blocked memory content: entry is too large; save a compact summary and artifact path instead.";
 	}
 	return undefined;
+}
+
+export function scanMemoryReportContent(content: string): string | undefined {
+	return scanUnsafeContent(content);
 }
 
 export function validateMemoryEntryMetadata(content: string, target: MemoryTargetConfig): string | undefined {

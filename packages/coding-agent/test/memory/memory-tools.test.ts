@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -312,6 +312,53 @@ describe("memory tools", () => {
 			expect(memoryIndex).toContain(`reportPath=${reportPath}`);
 			expect(memoryIndex).toContain("sourcePaths=.pi/artifacts/market-data/nvda.csv");
 			expect(memoryIndex).not.toContain("Full sourced research notes.");
+		});
+	});
+
+	it("rejects unsafe research report content before writing a report file", async () => {
+		await withTempCwd(async (cwd) => {
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "Unsafe report",
+					summary: "symbol=NVDA | asOf=2026-06-21 | unsafe report.",
+					content: "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("potential secret");
+			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
+		});
+	});
+
+	it("does not leave orphan research reports when compact memory index fails", async () => {
+		await withTempCwd(async (cwd) => {
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "Missing timestamp",
+					summary: "symbol=NVDA | thesis without required timestamp.",
+					content: "# Missing timestamp\n\nThis should not be written because index validation fails.",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("asOf or createdAt");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
 		});
 	});
 });
