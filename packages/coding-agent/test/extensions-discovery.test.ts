@@ -46,7 +46,7 @@ describe("extensions discovery", () => {
 
 		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 
-		expect(result.errors).toHaveLength(0);
+		expect(result.errors, JSON.stringify(result.errors, null, 2)).toHaveLength(0);
 		expect(result.extensions).toHaveLength(2);
 		expect(result.extensions.map((e) => path.basename(e.path)).sort()).toEqual(["bar.ts", "foo.ts"]);
 	});
@@ -56,7 +56,7 @@ describe("extensions discovery", () => {
 
 		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 
-		expect(result.errors).toHaveLength(0);
+		expect(result.errors, JSON.stringify(result.errors, null, 2)).toHaveLength(0);
 		expect(result.extensions).toHaveLength(1);
 		expect(path.basename(result.extensions[0].path)).toBe("foo.js");
 	});
@@ -288,6 +288,24 @@ describe("extensions discovery", () => {
 		expect(result.errors).toHaveLength(0);
 		expect(result.extensions).toHaveLength(1);
 		expect(result.extensions[0].commands.has("test")).toBe(true);
+	});
+
+	it("loads extensions that import agent-core subpath dependencies", async () => {
+		const extCode = `
+			import { Agent } from "@earendil-works/pi-agent-core";
+
+			export default function(pi) {
+				if (!Agent) throw new Error("Agent export missing");
+				pi.registerCommand("agent-core", { handler: async () => {} });
+			}
+		`;
+		fs.writeFileSync(path.join(extensionsDir, "with-agent-core.ts"), extCode);
+
+		const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+
+		expect(result.errors, JSON.stringify(result.errors, null, 2)).toHaveLength(0);
+		expect(result.extensions).toHaveLength(1);
+		expect(result.extensions[0].commands.has("agent-core")).toBe(true);
 	});
 
 	it("loads extensions and registers tools", async () => {

@@ -286,9 +286,12 @@ Core 自动暴露：
 memory_list
 memory_read
 memory_search
+memory_index_search
+memory_write_policy
 memory_write
 memory_compact
 memory_session_search
+memory_suggest_promotions
 memory_promote_session
 memory_research_report
 memory_audit
@@ -303,11 +306,14 @@ Finance 使用时固定 `namespace="finance"`。
 - `memory_write` 的成功 message 会标出 `skippedDuplicates` / `mergedDuplicates`，让模型知道本次写入是否被去重。
 - `memory_write` 失败时才返回 current entries 预览，方便模型合并后重试；预览会截断，避免大 memory target 全量 flush 污染上下文。
 - `memory_write` 对 add/replace 写入做空白规范化去重，避免同一条用户偏好或研究结论因换行/多空格差异重复污染 memory。
+- `memory_write_policy` 对 proposed write 做只读审核，返回 `allow` / `suggest_review` / `block`，用于在真正写入前检查 secret/prompt injection、市场新鲜度、source reference 和容量风险；它不写 `.pi/memory`。
 - `memory_compact` 在 agent 读过当前条目数后，把单个 target 压缩成一个 curated entry；如果 `sourceEntryCount` 与当前条目数不一致则拒绝覆盖，避免 stale compaction 覆盖新记忆。
 - 搜索和读取由模型主动决定，不在每轮自动 flush 全量 memory。
 - `memory_search` 搜索 persistent memory 时返回 compact score/snippet，并按 query term 覆盖度和命中次数排序。
 - `memory_search` 对 delimiter-separated memory file 按完整 entry 召回；当一条研究记忆的 symbol、thesis、risk 分布在多行时，query terms 跨行仍能命中同一条 curated memory。
+- `memory_index_search` 提供 SQLite FTS5 派生索引召回，按 `symbol` / `symbols` / `reportPath` / `sourcePaths` metadata 提升研究索引、report 和 artifact path 命中；Markdown memory 仍是 source of truth，SQLite 文件只是可重建索引，失败时回退到轻量文本搜索。
 - `memory_session_search` 搜索当前项目历史 session JSONL，只返回 compact role/text/path/time/score/snippet 命中，不回显完整 session 或 provider payload；其中 `line` 是真实 JSONL 文件行号。无法映射到真实 source line 的合成上下文不返回，避免后续 `memory_promote_session` 拿到不可验证的 `line=0`。
+- `memory_suggest_promotions` 基于 `memory_session_search` 的可追溯命中生成候选 `target`、`contentDraft`、`sourceSessionPath` 和 `sourceLine`，只用于 review，不写入 persistent memory。
 - `memory_promote_session` 在 `memory_session_search` 找到可复用历史证据后，把模型整理出的 compact entry 写入 persistent memory，并附带 `sourceSession=<path>:<line>`，避免自动把整段历史灌入长期记忆；sourceSession 必须指向真实 `.jsonl` user/assistant message 行，且 source path 必须位于项目 session root 或当前配置的 Pi 默认 session root。
 - `memory_research_report` 把长研究报告写入 `.pi/research/*.md`，再把 compact summary、report path 和 source paths 写进 memory index。
 - `memory_research_report` 会先校验 `sourcePaths` 是项目内相对文件路径且文件存在，避免写入不可复查的 compact research index。
@@ -397,8 +403,8 @@ FinancePi 的目标 loop：
 5. 检查 `sourceHealth`、`degradedReasons`、`asOf/latestAt`、artifact path。
 6. 必要时继续搜索网页、读取 artifact 或补充比较数据。
 7. 输出自然分析，而不是固定模板。
-8. 如果用户明确要求“记住”，或本轮产生可复用偏好、watchlist、thesis 或 workflow lesson，使用 `memory_write` 写入 compact memory。
-9. 如果长期价值来自历史 session，先用 `memory_session_search` 找证据，再用 `memory_promote_session` 写入带 `sourceSession` 的 compact memory。
+8. 如果用户明确要求“记住”，或本轮产生可复用偏好、watchlist、thesis 或 workflow lesson，先用 `memory_write_policy` 做只读审核；通过或修正后再用 `memory_write` 写入 compact memory。
+9. 如果长期价值来自历史 session，先用 `memory_session_search` 找证据；需要整理候选时用 `memory_suggest_promotions` review；确认值得保存后再用 `memory_promote_session` 写入带 `sourceSession` 的 compact memory。
 10. 如果 `memory_audit` 显示 target 接近容量上限、重复或陈旧，先读取当前内容，再用 `memory_compact` 安全收束。
 
 Memory 的作用是提升判断和连续性，不是替代分析过程。
@@ -472,20 +478,23 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 
 建议后续分三步：
 
-### Phase A：SQLite FTS provider
+### Phase A：Local index / SQLite FTS provider
 
-当前已具备轻量 session JSONL search：
+当前已具备本地召回：
 
+- `memory_search` 可搜索 `.pi/memory`，并返回 score/snippet/ranking。
 - `memory_session_search` 可搜索当前项目历史 session。
+- `memory_suggest_promotions` 可把历史 session 命中整理为候选，不直接写入长期记忆。
+- `memory_index_search` 可按 symbol/reportPath/sourcePaths metadata 召回 compact research index，并在 namespace root 下维护 `.memory-index.sqlite` SQLite FTS5 派生索引。
 - 搜索结果按 query term 覆盖度和命中次数排序，并带 compact snippet。
 - 搜索结果作为历史上下文，不是事实源。
-- 不需要 SQLite 或外部服务。
+- 不需要外部服务；不使用 embedding。
 
 目标：
 
-- `.pi/memory` 和 session search 已具备轻量 score/snippet/ranking。
-- 后续可为 `.pi/memory` 和 session summary 建本地 FTS 索引。
-- 后续可支持更强的 symbol、topic、用户偏好搜索。
+- `.pi/memory`、session search 和 research index metadata 已具备 score/snippet/ranking；research index metadata 已由 SQLite FTS5 派生索引覆盖。
+- 后续如需要更大规模召回，可把 session summary 也纳入 SQLite FTS；本次不引入 embedding。
+- 后续可支持更强的 semantic topic、用户偏好和跨项目搜索。
 - 不依赖外部服务。
 
 ### Phase B：Research memory provider
@@ -515,6 +524,9 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 用户说“记住”时，agent 能写入 `.pi/memory/finance`。
 - 后续会话能搜索 prior preference、watchlist、symbol thesis。
 - `memory_search` 返回 score/snippet，并优先返回覆盖更多 query terms 的 memory 命中。
+- `memory_index_search` 能按 symbol、reportPath 或 sourcePath 召回 compact research index。
+- `memory_write_policy` 能只读审核 proposed write 并返回 allow/suggest_review/block，不写 `.pi/memory`。
+- `memory_suggest_promotions` 能基于 prior session evidence 返回候选 target、contentDraft 和 source path/line，且不写入 `.pi/memory`。
 - `memory_promote_session` 能把历史 session 命中的 durable 结论带 `sourceSession` 写入 curated memory。
 - `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
 - `memory_provider_audit` 能查看外部 memory provider 配置、可用状态和错误记录。
@@ -568,6 +580,9 @@ Project docs 解释系统怎么运行；memory 保存用户和研究状态。二
 - 2026-06-21：新增 `memory_research_report` 设计说明，用于长研究报告落盘和 compact memory 索引。
 - 2026-06-21：增强 `memory_session_search` 设计说明，补充相关性排序和 snippet。
 - 2026-06-21：新增 `memory_promote_session`，用于把历史 session 命中显式整理成带 `sourceSession` 的 curated memory，并校验 sourceSession 指向真实 `.jsonl` user/assistant message 行。
+- 2026-06-22：新增 `memory_suggest_promotions`，用于把 prior session evidence 整理成 review-only promotion candidates，避免直接自动写长期记忆。
+- 2026-06-22：新增 `memory_index_search`，用于按 symbol、reportPath 和 sourcePaths 召回 compact research index；当前实现使用 SQLite FTS5 派生索引，Markdown memory 为 source of truth，失败时回退到轻量搜索。
+- 2026-06-22：新增 `memory_write_policy`，用于在真正写入前做只读安全、新鲜度、来源和容量审核。
 - 2026-06-21：增强 `memory_session_search`，过滤无法映射到真实 JSONL source line 的历史上下文，保证返回结果可作为 session promotion 证据。
 - 2026-06-21：修正 `memory_promote_session` 的 source path 校验，支持默认 `memory_session_search` 返回的配置化 Pi session root，同时继续拒绝非 session root 任意路径。
 - 2026-06-21：增强 `memory_search` 设计说明，补充 persistent memory 的相关性排序和 snippet。

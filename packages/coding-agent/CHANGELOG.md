@@ -17,6 +17,9 @@
 - Added `stale_market_data` memory audit risk detection and `staleEntries` counts for old timestamped market-sensitive memory.
 - Added entry-level persistent memory search for delimiter-separated memory entries whose query terms span multiple lines.
 - Added `memory_promote_session` to promote compact prior session evidence into curated persistent memory with explicit source session references.
+- Added `memory_suggest_promotions` to review prior session evidence as curated-memory promotion candidates before writing persistent memory.
+- Added `memory_index_search` with a SQLite FTS5-backed derived index for symbol, report path, and source path-aware persistent-memory recall, with lightweight fallback.
+- Added `memory_write_policy` to review proposed memory writes without writing persistent memory.
 - Added source-session validation for session promotion, requiring a real `.jsonl` user/assistant message line.
 - Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
 - Added public API exports for memory audit and compact result types used by external extensions.

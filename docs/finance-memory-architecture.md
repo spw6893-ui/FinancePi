@@ -227,9 +227,12 @@ Finance namespace 由 `createFinanceMemoryNamespace()` 定义：
 memory_list
 memory_read
 memory_search
+memory_index_search
+memory_write_policy
 memory_write
 memory_compact
 memory_session_search
+memory_suggest_promotions
 memory_promote_session
 memory_research_report
 memory_audit
@@ -258,6 +261,27 @@ Finance 使用时固定 `namespace="finance"`。
 - 查长期 workflow 规则。
 - 返回 score/snippet，并按 query term 覆盖度和命中次数优先返回更相关条目。
 - 多行研究条目按完整 entry 召回；如果 symbol、thesis、risk 分布在同一条 memory 的多行里，搜索不会只返回单独一行。
+
+### `memory_index_search`
+
+按 symbol、reportPath 和 sourcePaths metadata 搜索 compact persistent-memory index。
+
+用途：
+
+- 查某个 symbol 对应的 research index、report path 或 artifact source path。
+- 在读取 `.pi/research/*.md` 或 `.pi/artifacts/*` 前先定位 compact index。
+- 使用 namespace root 下的 `.memory-index.sqlite` SQLite FTS5 派生索引；Markdown memory 仍是 source of truth，SQLite 文件可重建，失败时回退到轻量文本搜索。
+- 不引入 embedding。
+
+### `memory_write_policy`
+
+只读审核 proposed memory write，不直接写 `.pi/memory`。
+
+用途：
+
+- 在不确定是否该写 memory 时先检查。
+- 返回 `allow` / `suggest_review` / `block`。
+- 检查 secret/prompt injection、market-sensitive 时间戳、source reference、容量和 destructive operation 风险。
 
 ### `memory_read`
 
@@ -334,6 +358,22 @@ Finance 使用时固定 `namespace="finance"`。
 - 按 query term 覆盖度和命中次数排序，优先返回更相关片段。
 - 搜索结果仍是历史上下文，不能当当前市场事实。
 
+### `memory_suggest_promotions`
+
+基于 prior session evidence 生成可 review 的 curated-memory 候选，不直接写入 `.pi/memory`。
+
+用途：
+
+- 用户要求“整理之前讨论过哪些值得记住的研究结论”时，先生成候选。
+- 从历史 session 中找 durable preference、watchlist、symbol thesis 或 workflow lesson。
+- 输出候选 `target`、`contentDraft`、`sourceSessionPath`、`sourceLine` 和原因，后续由 `memory_promote_session` 写入。
+
+规则：
+
+- 只使用能追溯到真实 JSONL source line 的 session 命中。
+- suggestion 是草稿，不是事实源，也不是已经写入的 memory。
+- 市场敏感候选仍需要后续验证；保存时必须带 `asOf=` 或 `createdAt=`。
+
 ### `memory_promote_session`
 
 把 `memory_session_search` 命中的历史 session 证据整理成 compact curated memory。
@@ -408,7 +448,7 @@ FinancePi 的理想 loop：
 5. 检查 source health、degraded reasons、asOf/latestAt、artifact path。
 6. 必要时继续搜索或读取 artifact。
 7. 输出自然分析，而不是固定模板。
-8. 如果用户明确要求“记住”，或产生可复用偏好/研究结论，再使用 `memory_write`。
+8. 如果用户明确要求“记住”，或产生可复用偏好/研究结论，先用 `memory_write_policy` 审核；通过或修正后再使用 `memory_write`。
 9. 如果 memory target 接近容量上限、重复或陈旧，先 `memory_audit` / `memory_read`，再用 `memory_compact` 安全收束。
 
 这和“工具一返回就直接回答”不同。memory 的作用不是让模型少思考，而是让模型能带着历史偏好做更好的下一步判断。
@@ -553,7 +593,7 @@ Finance extension 只负责：
 - 新增 extension API：`registerMemoryNamespace`。
 - AgentSession 统一注入 memory block。
 - Finance extension 不再手写 memory prompt 拼接。
-- Core 自动暴露 `memory_list/read/search/write/session_search/promote_session/provider_audit` 对应的 `memory_*` 工具，包括 `memory_session_search`、`memory_promote_session` 和 `memory_provider_audit`。
+- Core 自动暴露 `memory_list/read/search/index_search/write_policy/write/session_search/suggest_promotions/promote_session/provider_audit` 对应的 `memory_*` 工具，包括 `memory_index_search`、`memory_write_policy`、`memory_session_search`、`memory_suggest_promotions`、`memory_promote_session` 和 `memory_provider_audit`。
 - 新增 extension API：`registerMemoryProvider`。
 - AgentSession 初始化 provider 并追加 provider prompt block。
 - 只有 provider、没有本地 memory namespace 的 extension 仍会暴露 `memory_provider_audit`，用于排查外部 memory 服务可用性和错误。
@@ -569,17 +609,19 @@ Finance extension 只负责：
 
 ### Phase 3：Session search
 
-已覆盖轻量 MVP：
+已覆盖：
 
 - `memory_session_search` 搜索当前项目历史 session JSONL。
+- `memory_suggest_promotions` 基于历史 session 命中生成 review-only promotion candidates，不直接写入长期记忆。
 - 支持“我们上次聊 NVDA 说了什么？”。
 - 返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
 - 搜索结果仍作为候选上下文，不自动当事实。
 
-后续可继续借鉴 Hermes SQLite FTS5 思路：
+后续可继续扩展 SQLite FTS5 覆盖面：
 
-- 对历史 session 建索引。
+- 对历史 session 建 SQLite FTS 索引。
 - 增加更强排序、snippet 和跨项目召回。
+- 当前已经覆盖 `.pi/memory` ranked search、session JSONL search，以及 `memory_index_search` 的 symbol/report/source metadata SQLite FTS5 召回；本次不引入 embedding。
 
 ### Phase 4：Research notes
 
@@ -617,7 +659,7 @@ interface MemoryProvider {
 
 可接：
 
-- SQLite FTS。
+- SQLite FTS 扩展。
 - local vector store。
 - Honcho。
 - Mem0。
@@ -628,6 +670,9 @@ interface MemoryProvider {
 - 用户明确说“记住”时，agent 能写入 `.pi/memory/finance`。
 - 后续会话能按 symbol、主题、偏好搜索 prior memory。
 - Persistent memory search 能返回 score/snippet，并优先返回覆盖更多 query terms 的命中。
+- `memory_index_search` 能按 symbol、reportPath 或 sourcePath 召回 compact research index。
+- `memory_write_policy` 能只读审核 proposed write 并返回 allow/suggest_review/block，不写 `.pi/memory`。
+- `memory_suggest_promotions` 能基于 prior session evidence 返回候选 target、contentDraft 和 source path/line，且不写入 `.pi/memory`。
 - `memory_audit` 能查看 memory target 容量、条目数、注入策略、路径和风险状态。
 - `memory_provider_audit` 能查看外部 memory provider 配置、可用状态和错误记录。
 - `memory_compact` 能把过长 target 压缩为单条 curated entry，并阻止 stale compaction 覆盖更新后的 memory。
@@ -657,6 +702,9 @@ interface MemoryProvider {
 - 2026-06-21：新增 `memory_research_report`，把长研究报告落盘到 `.pi/research` 并在 memory 中保存 compact index。
 - 2026-06-21：增强 `memory_session_search`，补充 query coverage 排序和 snippet 输出。
 - 2026-06-21：新增 `memory_promote_session`，用于把历史 session 命中显式整理成带 `sourceSession` 的 curated memory，并校验 sourceSession 指向真实 `.jsonl` user/assistant message 行。
+- 2026-06-22：新增 `memory_suggest_promotions`，用于把 prior session evidence 整理成 review-only promotion candidates，避免直接自动写长期记忆。
+- 2026-06-22：新增 `memory_index_search`，用于按 symbol、reportPath 和 sourcePaths 召回 compact research index；当前实现使用 SQLite FTS5 派生索引，Markdown memory 为 source of truth，失败时回退到轻量搜索。
+- 2026-06-22：新增 `memory_write_policy`，用于在真正写入前做只读安全、新鲜度、来源和容量审核。
 - 2026-06-21：增强 `memory_session_search`，过滤无法映射到真实 JSONL source line 的历史上下文，保证返回结果可作为 session promotion 证据。
 - 2026-06-21：修正 `memory_promote_session` 的 source path 校验，支持默认 `memory_session_search` 返回的配置化 Pi session root，同时继续拒绝非 session root 任意路径。
 - 2026-06-21：增强 `memory_search`，补充 persistent memory 的 query coverage 排序和 snippet 输出。

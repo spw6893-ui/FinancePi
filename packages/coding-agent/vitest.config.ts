@@ -7,6 +7,7 @@ const aiSrcOAuth = fileURLToPath(new URL("../ai/src/oauth.ts", import.meta.url))
 const aiOpenRouterImages = fileURLToPath(new URL("../ai/src/providers/images/openrouter.ts", import.meta.url));
 const agentSrcIndex = fileURLToPath(new URL("../agent/src/index.ts", import.meta.url));
 const agentSrcBase = fileURLToPath(new URL("../agent/src/base.ts", import.meta.url));
+const agentSrcNode = fileURLToPath(new URL("../agent/src/node.ts", import.meta.url));
 const codingAgentSrcIndex = fileURLToPath(new URL("./src/index.ts", import.meta.url));
 const cryptoSrcIndex = fileURLToPath(new URL("../crypto/src/index.ts", import.meta.url));
 const financeSrcIndex = fileURLToPath(new URL("../finance/src/index.ts", import.meta.url));
@@ -31,6 +32,7 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-ai\/openrouter-images$/, replacement: aiOpenRouterImages },
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-agent-core\/base$/, replacement: agentSrcBase },
+			{ find: /^@earendil-works\/pi-agent-core\/node$/, replacement: agentSrcNode },
 			{ find: /^@earendil-works\/pi-coding-agent$/, replacement: codingAgentSrcIndex },
 			{ find: /^@earendil-works\/pi-crypto$/, replacement: cryptoSrcIndex },
 			{ find: /^@earendil-works\/pi-finance$/, replacement: financeSrcIndex },
@@ -41,6 +43,7 @@ export default defineConfig({
 			{ find: /^@mariozechner\/pi-ai\/openrouter-images$/, replacement: aiOpenRouterImages },
 			{ find: /^@mariozechner\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@mariozechner\/pi-agent-core\/base$/, replacement: agentSrcBase },
+			{ find: /^@mariozechner\/pi-agent-core\/node$/, replacement: agentSrcNode },
 			{ find: /^@mariozechner\/pi-coding-agent$/, replacement: codingAgentSrcIndex },
 			{ find: /^@mariozechner\/pi-crypto$/, replacement: cryptoSrcIndex },
 			{ find: /^@mariozechner\/pi-finance$/, replacement: financeSrcIndex },

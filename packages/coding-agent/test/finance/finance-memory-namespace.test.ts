@@ -138,8 +138,11 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_read");
 				expect(allToolNames).toContain("memory_search");
 				expect(allToolNames).toContain("memory_write");
+				expect(allToolNames).toContain("memory_index_search");
+				expect(allToolNames).toContain("memory_write_policy");
 				expect(allToolNames).toContain("memory_compact");
 				expect(allToolNames).toContain("memory_session_search");
+				expect(allToolNames).toContain("memory_suggest_promotions");
 				expect(allToolNames).toContain("memory_promote_session");
 				expect(allToolNames).toContain("memory_research_report");
 				expect(allToolNames).toContain("memory_audit");
@@ -149,15 +152,23 @@ describe("finance memory namespace", () => {
 					"memory_read",
 					"memory_search",
 					"memory_write",
+					"memory_index_search",
+					"memory_write_policy",
 					"memory_compact",
 					"memory_session_search",
+					"memory_suggest_promotions",
 					"memory_promote_session",
 					"memory_research_report",
 					"memory_audit",
 					"memory_provider_audit",
 				]);
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
+				expect(session.systemPrompt).toContain(
+					"- memory_index_search: Search SQLite FTS5 persistent memory indexes",
+				);
+				expect(session.systemPrompt).toContain("- memory_write_policy: Review a proposed persistent memory write");
 				expect(session.systemPrompt).toContain("- memory_session_search: Search prior project session memory");
+				expect(session.systemPrompt).toContain("- memory_suggest_promotions: Suggest prior session evidence");
 				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
 			} finally {
 				session.dispose();
@@ -541,7 +552,10 @@ describe("finance memory namespace", () => {
 			)) as { systemPrompt?: string } | undefined;
 
 			expect(output?.systemPrompt).toContain("FINANCE AGENT MODE");
+			expect(output?.systemPrompt).toContain("memory_index_search");
+			expect(output?.systemPrompt).toContain("memory_write_policy");
 			expect(output?.systemPrompt).toContain("memory_session_search");
+			expect(output?.systemPrompt).toContain("memory_suggest_promotions");
 			expect(output?.systemPrompt).toContain("memory_promote_session");
 			expect(output?.systemPrompt).toContain("instead of copying raw session text");
 			expect(output?.systemPrompt).not.toContain("CORE MEMORY CONTEXT");

@@ -55,8 +55,11 @@ describe("buildMemorySystemPromptBlock", () => {
 
 			expect(block).toContain("CORE MEMORY CONTEXT");
 			expect(block).toContain("Use namespace=finance");
+			expect(block).toContain("Use memory_index_search");
 			expect(block).toContain("Use memory_session_search");
+			expect(block).toContain("Use memory_suggest_promotions");
 			expect(block).toContain("Use memory_promote_session only after memory_session_search");
+			expect(block).toContain("Use memory_write_policy");
 			expect(block).toContain("Use memory_write when the user explicitly asks you to remember");
 			expect(block).toContain("Use memory_audit and memory_compact");
 			expect(block).toContain("If memory_audit reports risk=duplicate_entries");

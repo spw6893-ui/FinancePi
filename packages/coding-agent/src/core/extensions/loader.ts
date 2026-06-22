@@ -8,7 +8,10 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as _bundledPiAgentCore from "@earendil-works/pi-agent-core";
+import * as _bundledPiAgentCoreBase from "@earendil-works/pi-agent-core/base";
+import * as _bundledPiAgentCoreNode from "@earendil-works/pi-agent-core/node";
 import * as _bundledPiAi from "@earendil-works/pi-ai";
+import * as _bundledPiAiBase from "@earendil-works/pi-ai/base";
 import * as _bundledPiAiOauth from "@earendil-works/pi-ai/oauth";
 import * as _bundledPiCrypto from "@earendil-works/pi-crypto";
 import * as _bundledPiFinance from "@earendil-works/pi-finance";
@@ -51,15 +54,21 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@sinclair/typebox/compile": _bundledTypeboxCompile,
 	"@sinclair/typebox/value": _bundledTypeboxValue,
 	"@earendil-works/pi-agent-core": _bundledPiAgentCore,
+	"@earendil-works/pi-agent-core/base": _bundledPiAgentCoreBase,
+	"@earendil-works/pi-agent-core/node": _bundledPiAgentCoreNode,
 	"@earendil-works/pi-tui": _bundledPiTui,
 	"@earendil-works/pi-ai": _bundledPiAi,
+	"@earendil-works/pi-ai/base": _bundledPiAiBase,
 	"@earendil-works/pi-ai/oauth": _bundledPiAiOauth,
 	"@earendil-works/pi-crypto": _bundledPiCrypto,
 	"@earendil-works/pi-finance": _bundledPiFinance,
 	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
+	"@mariozechner/pi-agent-core/base": _bundledPiAgentCoreBase,
+	"@mariozechner/pi-agent-core/node": _bundledPiAgentCoreNode,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAi,
+	"@mariozechner/pi-ai/base": _bundledPiAiBase,
 	"@mariozechner/pi-ai/oauth": _bundledPiAiOauth,
 	"@mariozechner/pi-crypto": _bundledPiCrypto,
 	"@mariozechner/pi-finance": _bundledPiFinance,
@@ -78,41 +87,84 @@ function getAliases(): Record<string, string> {
 	if (_aliases) return _aliases;
 
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
-	const packageIndex = path.resolve(__dirname, "../..", "index.js");
+	const sourceOrDistRoot = path.resolve(__dirname, "../..");
+	const packageIndexJs = path.resolve(sourceOrDistRoot, "index.js");
+	const packageIndexTs = path.resolve(sourceOrDistRoot, "index.ts");
+	const packageIndex = fs.existsSync(packageIndexJs) ? packageIndexJs : packageIndexTs;
 
 	const typeboxEntry = require.resolve("typebox");
 	const typeboxCompileEntry = require.resolve("typebox/compile");
 	const typeboxValueEntry = require.resolve("typebox/value");
 
 	const packagesRoot = path.resolve(__dirname, "../../../../");
-	const resolveWorkspaceOrImport = (workspaceRelativePath: string, specifier: string): string => {
-		const workspacePath = path.join(packagesRoot, workspaceRelativePath);
-		if (fs.existsSync(workspacePath)) {
-			return workspacePath;
+	const resolveWorkspaceOrImport = (
+		workspaceRelativePath: string,
+		specifier: string,
+		sourceRelativePath?: string,
+	): string => {
+		for (const candidate of [workspaceRelativePath, sourceRelativePath]) {
+			if (!candidate) continue;
+			const workspacePath = path.join(packagesRoot, candidate);
+			if (fs.existsSync(workspacePath)) {
+				return workspacePath;
+			}
 		}
 		return fileURLToPath(import.meta.resolve(specifier));
 	};
 
 	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@earendil-works/pi-agent-core");
-	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui");
-	const piAiEntry = resolveWorkspaceOrImport("ai/dist/index.js", "@earendil-works/pi-ai");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
-	const piCryptoEntry = resolveWorkspaceOrImport("crypto/dist/index.js", "@earendil-works/pi-crypto");
-	const piFinanceEntry = resolveWorkspaceOrImport("finance/dist/index.js", "@earendil-works/pi-finance");
+	const piAgentCoreEntry = resolveWorkspaceOrImport(
+		"agent/dist/index.js",
+		"@earendil-works/pi-agent-core",
+		"agent/src/index.ts",
+	);
+	const piAgentCoreBaseEntry = resolveWorkspaceOrImport(
+		"agent/dist/base.js",
+		"@earendil-works/pi-agent-core/base",
+		"agent/src/base.ts",
+	);
+	const piAgentCoreNodeEntry = resolveWorkspaceOrImport(
+		"agent/dist/node.js",
+		"@earendil-works/pi-agent-core/node",
+		"agent/src/node.ts",
+	);
+	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui", "tui/src/index.ts");
+	const piAiEntry = resolveWorkspaceOrImport("ai/dist/index.js", "@earendil-works/pi-ai", "ai/src/index.ts");
+	const piAiBaseEntry = resolveWorkspaceOrImport("ai/dist/base.js", "@earendil-works/pi-ai/base", "ai/src/base.ts");
+	const piAiOauthEntry = resolveWorkspaceOrImport(
+		"ai/dist/oauth.js",
+		"@earendil-works/pi-ai/oauth",
+		"ai/src/oauth.ts",
+	);
+	const piCryptoEntry = resolveWorkspaceOrImport(
+		"crypto/dist/index.js",
+		"@earendil-works/pi-crypto",
+		"crypto/src/index.ts",
+	);
+	const piFinanceEntry = resolveWorkspaceOrImport(
+		"finance/dist/index.js",
+		"@earendil-works/pi-finance",
+		"finance/src/index.ts",
+	);
 
 	_aliases = {
 		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
 		"@earendil-works/pi-agent-core": piAgentCoreEntry,
+		"@earendil-works/pi-agent-core/base": piAgentCoreBaseEntry,
+		"@earendil-works/pi-agent-core/node": piAgentCoreNodeEntry,
 		"@earendil-works/pi-tui": piTuiEntry,
 		"@earendil-works/pi-ai": piAiEntry,
+		"@earendil-works/pi-ai/base": piAiBaseEntry,
 		"@earendil-works/pi-ai/oauth": piAiOauthEntry,
 		"@earendil-works/pi-crypto": piCryptoEntry,
 		"@earendil-works/pi-finance": piFinanceEntry,
 		"@mariozechner/pi-coding-agent": piCodingAgentEntry,
 		"@mariozechner/pi-agent-core": piAgentCoreEntry,
+		"@mariozechner/pi-agent-core/base": piAgentCoreBaseEntry,
+		"@mariozechner/pi-agent-core/node": piAgentCoreNodeEntry,
 		"@mariozechner/pi-tui": piTuiEntry,
 		"@mariozechner/pi-ai": piAiEntry,
+		"@mariozechner/pi-ai/base": piAiBaseEntry,
 		"@mariozechner/pi-ai/oauth": piAiOauthEntry,
 		"@mariozechner/pi-crypto": piCryptoEntry,
 		"@mariozechner/pi-finance": piFinanceEntry,

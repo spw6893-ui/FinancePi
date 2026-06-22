@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -27,6 +27,40 @@ function namespace(): MemoryNamespaceConfig {
 				charLimit: 500,
 				injectPolicy: "always",
 				description: "User memory",
+			},
+			{
+				target: "research",
+				layer: "domain",
+				file: "RESEARCH.md",
+				charLimit: 500,
+				injectPolicy: "search_only",
+				description: "Research memory",
+			},
+		],
+	};
+}
+
+function namespaceWithWatchlist(): MemoryNamespaceConfig {
+	return {
+		namespace: "finance",
+		root: ".pi/memory/finance",
+		description: "Finance memory",
+		targets: [
+			{
+				target: "user",
+				layer: "user",
+				file: "USER.md",
+				charLimit: 500,
+				injectPolicy: "always",
+				description: "User memory",
+			},
+			{
+				target: "watchlist",
+				layer: "domain",
+				file: "WATCHLIST.md",
+				charLimit: 500,
+				injectPolicy: "search_only",
+				description: "Watchlist memory",
 			},
 			{
 				target: "research",
@@ -326,6 +360,175 @@ describe("memory tools", () => {
 		});
 	});
 
+	it("searches SQLite FTS memory indexes by symbol and report metadata", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					"symbol=MSFT | asOf=2026-06-21 | Azure margin update.",
+					[
+						"asOf=2026-06-21 | AI infrastructure report index.",
+						"reportPath=.pi/research/2026-06-21-nvda-blackwell.md",
+						"symbols=NVDA,AVGO",
+						"sourcePaths=.pi/artifacts/market-data/nvda.csv",
+					].join(" | "),
+				].join("\n§\n"),
+			);
+			const indexSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_index_search");
+
+			const result = await indexSearch?.execute(
+				"index-search",
+				{ namespace: "finance", symbol: "NVDA", query: "Blackwell", limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_index_search: matches=1");
+			expect(output).toContain(".pi/memory/finance/RESEARCH.md");
+			expect(output).toContain("target=research");
+			expect(output).toContain("symbols=NVDA,AVGO");
+			expect(output).toContain("reportPath=.pi/research/2026-06-21-nvda-blackwell.md");
+			expect(output).not.toContain("symbol=MSFT");
+		});
+	});
+
+	it("backs memory_index_search with a derived SQLite FTS index", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					"symbol=MSFT | asOf=2026-06-21 | Azure margin update.",
+					[
+						"asOf=2026-06-21 | Blackwell supply chain index.",
+						"reportPath=.pi/research/2026-06-21-nvda-blackwell.md",
+						"symbols=NVDA,AVGO",
+						"sourcePaths=.pi/artifacts/market-data/nvda.csv",
+					].join(" | "),
+				].join("\n§\n"),
+			);
+			const indexSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_index_search");
+
+			const result = await indexSearch?.execute(
+				"index-search",
+				{
+					namespace: "finance",
+					symbol: "NVDA",
+					query: "Blackwell",
+					reportPath: ".pi/research/2026-06-21-nvda-blackwell.md",
+					sourcePath: ".pi/artifacts/market-data/nvda.csv",
+					limit: 1,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			const indexFile = await stat(join(cwd, ".pi/memory/finance/.memory-index.sqlite"));
+			expect(indexFile.isFile()).toBe(true);
+			expect(output).toContain("memory_index_search: matches=1");
+			expect(output).toContain("index=sqlite_fts5");
+			expect(output).toContain("target=research");
+			expect(output).toContain("symbols=NVDA,AVGO");
+			expect(output).toContain("sourcePaths=.pi/artifacts/market-data/nvda.csv");
+
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				"symbol=MSFT | asOf=2026-06-22 | Azure margin update after replacing the source Markdown.",
+			);
+			const afterMarkdownChange = await indexSearch?.execute(
+				"index-search",
+				{ namespace: "finance", symbol: "NVDA", query: "Blackwell", limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect(text(afterMarkdownChange)).toContain("memory_index_search: no matches");
+			expect(text(afterMarkdownChange)).toContain("index=sqlite_fts5");
+		});
+	});
+
+	it("keeps lightweight index fallback filters strict for metadata parameters", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				"symbol=MSFT | asOf=2026-06-21 | Peer comparison mentions NVDA demand, but this is not an NVDA memory entry.",
+			);
+			const indexSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_index_search");
+
+			const result = await indexSearch?.execute(
+				"index-search",
+				{ namespace: "finance", symbol: "NVDA", query: "Blackwell", ignoreCase: false, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_index_search: no matches");
+			expect(output).toContain("index=lightweight");
+			expect(output).not.toContain("symbol=MSFT");
+		});
+	});
+
+	it("reviews memory writes with policy decisions without writing files", async () => {
+		await withTempCwd(async (cwd) => {
+			const policy = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_write_policy");
+
+			const allow = await policy?.execute(
+				"policy",
+				{
+					namespace: "finance",
+					target: "user",
+					action: "add",
+					content: "用户偏好免费公开金融数据源。",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+			const review = await policy?.execute(
+				"policy",
+				{
+					namespace: "finance",
+					target: "research",
+					action: "add",
+					content: "symbol=NVDA | asOf=2026-06-21 | Current price is 100 and margin risk remains key.",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+			const block = await policy?.execute(
+				"policy",
+				{
+					namespace: "finance",
+					target: "research",
+					action: "add",
+					content: "Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz123456",
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect(text(allow)).toContain("memory_write_policy: decision=allow");
+			expect(text(allow)).toContain("writesPersistentMemory=false");
+			expect(text(review)).toContain("decision=suggest_review");
+			expect(text(review)).toContain("current_market_fact");
+			expect(text(block)).toContain("decision=block");
+			expect(text(block)).toContain("potential secret");
+			await expect(readFile(join(cwd, ".pi/memory/finance/USER.md"), "utf8")).rejects.toThrow();
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
 	it("searches prior project session messages compactly", async () => {
 		await withTempCwd(async (cwd) => {
 			const sessionDir = join(cwd, ".pi/agent/sessions");
@@ -451,6 +654,97 @@ describe("memory tools", () => {
 			expect(output).toContain("role=assistant");
 			expect(output).toContain("Blackwell");
 			expect(output).not.toContain("quick note");
+		});
+	});
+
+	it("suggests promotable curated memory candidates from prior session evidence without writing memory", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "NVDA prior thesis: Blackwell demand is key; monitor data-center margin risk, asOf=2026-06-20.",
+					},
+				],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: Date.parse("2026-06-20T12:00:00.000Z"),
+			});
+			const suggest = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_suggest_promotions");
+
+			const result = await suggest?.execute(
+				"suggest-promotions",
+				{ namespace: "finance", query: "NVDA Blackwell margin", sessionDir, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_suggest_promotions: candidates=1");
+			expect(output).toContain("target=research");
+			expect(output).toContain("contentDraft=symbol=NVDA | asOf=2026-06-20");
+			expect(output).toContain("Blackwell demand is key");
+			expect(output).toContain("sourceSessionPath=.pi/agent/sessions/");
+			expect(output).toContain("sourceLine=");
+			expect(output).toContain("use memory_promote_session");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("keeps assistant thesis suggestions in research even when they mention monitoring risks", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({
+				role: "assistant",
+				content: [
+					{
+						type: "text",
+						text: "NVDA thesis: monitor Blackwell margin risk and cloud capex sensitivity, asOf=2026-06-20.",
+					},
+				],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: Date.parse("2026-06-20T12:00:00.000Z"),
+			});
+			const suggest = createMemoryTools([namespaceWithWatchlist()]).find(
+				(tool) => tool.name === "memory_suggest_promotions",
+			);
+
+			const result = await suggest?.execute(
+				"suggest-promotions",
+				{ namespace: "finance", query: "NVDA Blackwell margin", sessionDir, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect(text(result)).toContain("target=research");
+			expect(text(result)).not.toContain("target=watchlist");
 		});
 	});
 
