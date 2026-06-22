@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { TextContent } from "@earendil-works/pi-ai";
@@ -107,6 +108,26 @@ function sessionMessageTimestamp(entry: SessionMessageEntry): string {
 	return entry.timestamp;
 }
 
+function loadEntryLineNumbers(filePath: string): Map<string, number> {
+	const lineNumbers = new Map<string, number>();
+	let lines: string[];
+	try {
+		lines = readFileSync(filePath, "utf8").split(/\r?\n/);
+	} catch {
+		return lineNumbers;
+	}
+	for (const [index, line] of lines.entries()) {
+		if (!line.trim()) continue;
+		try {
+			const entry = JSON.parse(line) as { id?: unknown };
+			if (typeof entry.id === "string") {
+				lineNumbers.set(entry.id, index + 1);
+			}
+		} catch {}
+	}
+	return lineNumbers;
+}
+
 async function listCandidateSessions(cwd: string, sessionDir?: string): Promise<SessionInfo[]> {
 	if (sessionDir) {
 		return SessionManager.list(cwd, sessionDir);
@@ -126,17 +147,19 @@ export async function searchSessionMemory(options: MemorySessionSearchOptions): 
 	const sessions = await listCandidateSessions(options.cwd, options.sessionDir);
 	for (const session of sessions) {
 		const entries = loadEntriesFromFile(session.path);
+		const lineNumbers = loadEntryLineNumbers(session.path);
 		const header = entries.find((entry) => entry.type === "session");
 		const branchMessages = buildSessionContext(entries.filter((entry) => entry.type !== "session")).messages;
-		let line = 0;
 		for (const message of branchMessages) {
 			if (message.role !== "user" && message.role !== "assistant") continue;
-			line++;
 			const text = textFromMessage(message);
 			if (!textMatches(text, terms, ignoreCase)) continue;
 			const messageEntry = entries.find(
 				(entry): entry is SessionMessageEntry => entry.type === "message" && entry.message === message,
 			);
+			if (!messageEntry) continue;
+			const line = lineNumbers.get(messageEntry.id);
+			if (!line) continue;
 			const score = matchScore(text, terms, ignoreCase);
 			matches.push({
 				sessionId: header?.type === "session" ? header.id : session.id,

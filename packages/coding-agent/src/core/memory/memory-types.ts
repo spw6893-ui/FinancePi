@@ -74,8 +74,10 @@ export interface MemoryAuditTarget {
 	chars: number;
 	charLimit: number;
 	usagePct: number;
+	duplicateEntries: number;
+	staleEntries: number;
 	injectPolicy: MemoryInjectPolicy;
-	risk: "ok" | "empty" | "near_limit" | "over_limit";
+	risk: "ok" | "empty" | "near_limit" | "over_limit" | "duplicate_entries" | "stale_market_data";
 	description: string;
 }
 

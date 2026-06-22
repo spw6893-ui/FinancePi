@@ -72,7 +72,33 @@ describe("MemoryStore", () => {
 			expect(first.success).toBe(true);
 			expect(duplicate.success).toBe(true);
 			expect(duplicate.entryCount).toBe(1);
+			expect(duplicate.message).toContain("skippedDuplicates=1");
 			expect(list.entries[0].relativePath).toBe(".pi/memory/finance/USER.md");
+			expect(list.entries[0].entries).toEqual(["用户偏好免费公开金融数据源。"]);
+		});
+	});
+
+	it("skips duplicates with equivalent whitespace", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+
+			await store.write({
+				namespace: "finance",
+				target: "user",
+				action: "add",
+				content: "用户偏好免费公开金融数据源。",
+			});
+			const duplicate = await store.write({
+				namespace: "finance",
+				target: "user",
+				action: "add",
+				content: "用户偏好免费公开金融\n\n 数据源。",
+			});
+			const list = store.list({ namespace: "finance", target: "user" });
+
+			expect(duplicate.success).toBe(true);
+			expect(duplicate.entryCount).toBe(1);
+			expect(duplicate.message).toContain("skippedDuplicates=1");
 			expect(list.entries[0].entries).toEqual(["用户偏好免费公开金融数据源。"]);
 		});
 	});
@@ -106,6 +132,91 @@ describe("MemoryStore", () => {
 			expect(result.success).toBe(true);
 			expect(read.text).toContain("Blackwell");
 			expect(read.text).not.toContain("BTCUSDT");
+		});
+	});
+
+	it("deduplicates replace results with equivalent existing entries", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+
+			await store.write({
+				namespace: "finance",
+				target: "user",
+				operations: [
+					{ action: "add", content: "用户偏好免费公开金融数据源。" },
+					{ action: "add", content: "用户偏好免费数据源。" },
+				],
+			});
+			const result = await store.write({
+				namespace: "finance",
+				target: "user",
+				action: "replace",
+				oldText: "免费数据源",
+				content: "用户偏好免费公开金融\n\n 数据源。",
+			});
+			const list = store.list({ namespace: "finance", target: "user" });
+
+			expect(result.success).toBe(true);
+			expect(result.entryCount).toBe(1);
+			expect(result.message).toContain("mergedDuplicates=1");
+			expect(list.entries[0].entries).toEqual(["用户偏好免费公开金融数据源。"]);
+		});
+	});
+
+	it("marks targets with equivalent duplicate entries in audit", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/USER.md"),
+				["用户偏好免费公开金融数据源。", "用户偏好免费公开金融\n\n 数据源。"].join(MEMORY_ENTRY_DELIMITER),
+				"utf8",
+			);
+
+			const audit = store.audit({ namespace: "finance", target: "user" });
+
+			expect(audit.targetsDetail[0].risk).toBe("duplicate_entries");
+			expect(audit.targetsDetail[0].duplicateEntries).toBe(1);
+		});
+	});
+
+	it("marks targets with exact duplicate entries in audit", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/USER.md"),
+				["用户偏好免费公开金融数据源。", "用户偏好免费公开金融数据源。"].join(MEMORY_ENTRY_DELIMITER),
+				"utf8",
+			);
+
+			const audit = store.audit({ namespace: "finance", target: "user" });
+			const list = store.list({ namespace: "finance", target: "user" });
+
+			expect(list.entries[0].entries).toHaveLength(2);
+			expect(audit.targetsDetail[0].risk).toBe("duplicate_entries");
+			expect(audit.targetsDetail[0].duplicateEntries).toBe(1);
+		});
+	});
+
+	it("marks stale market-sensitive entries in audit", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+			await store.write({
+				namespace: "finance",
+				target: "research",
+				action: "add",
+				content: "symbol=NVDA | asOf=2025-01-01 | Blackwell margin thesis should be reviewed.",
+			});
+
+			const audit = store.audit({
+				namespace: "finance",
+				target: "research",
+				now: new Date("2026-06-21T00:00:00.000Z"),
+			});
+
+			expect(audit.targetsDetail[0].risk).toBe("stale_market_data");
+			expect(audit.targetsDetail[0].staleEntries).toBe(1);
 		});
 	});
 
@@ -229,6 +340,40 @@ describe("MemoryStore", () => {
 			expect(search.matches[0].score).toBeGreaterThan(0);
 			expect(search.matches[0].snippet).toContain("Blackwell capex");
 			expect(search.truncated).toBe(true);
+		});
+	});
+
+	it("recalls a multi-line memory entry when query terms span lines", async () => {
+		await withTempCwd(async (cwd) => {
+			const store = new MemoryStore({ cwd, namespaces: [testNamespace()] });
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					[
+						"symbol=NVDA | asOf=2026-06-21",
+						"thesis=Blackwell demand remains the key AI capex driver.",
+						"risk=margin compression if supply catches up.",
+					].join("\n"),
+					"symbol=BTCUSDT | asOf=2026-06-21 | Binance liquidity note.",
+				].join(MEMORY_ENTRY_DELIMITER),
+				"utf8",
+			);
+
+			const search = await store.search({
+				query: "NVDA Blackwell margin",
+				namespace: "finance",
+				target: "research",
+				limit: 1,
+			});
+
+			expect(search.matches).toHaveLength(1);
+			expect(search.matches[0].text).toContain("symbol=NVDA");
+			expect(search.matches[0].text).toContain("Blackwell demand");
+			expect(search.matches[0].text).toContain("margin compression");
+			expect(search.matches[0].snippet).toContain("NVDA");
+			expect(search.matches[0].snippet).toContain("Blackwell");
+			expect(search.matches[0].snippet).toContain("margin");
 		});
 	});
 

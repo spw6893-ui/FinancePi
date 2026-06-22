@@ -15,7 +15,7 @@ const INJECTION_PATTERNS: Array<{ id: string; pattern: RegExp }> = [
 ];
 
 const INVISIBLE_UNICODE_PATTERN = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u;
-const MEMORY_TIMESTAMP_PATTERN = /\b(?:asOf|createdAt)\s*=\s*\d{4}-\d{2}-\d{2}(?:T[^\s|]+)?\b/i;
+const MEMORY_TIMESTAMP_PATTERN = /\b(?:asOf|createdAt)\s*=\s*(\d{4}-\d{2}-\d{2}(?:T[^\s|]+)?)\b/i;
 const MARKET_SENSITIVE_PATTERN =
 	/\b(?:symbol|ticker)\s*=|\b(?:price|revenue|earnings|eps|margin|volume|valuation|thesis|risk|catalyst)\b/i;
 
@@ -45,10 +45,21 @@ export function scanMemoryReportContent(content: string): string | undefined {
 	return scanUnsafeContent(content);
 }
 
+export function memoryEntryRequiresTimestamp(content: string, target: Pick<MemoryTargetConfig, "layer">): boolean {
+	return target.layer === "domain" || (target.layer === "long_term" && MARKET_SENSITIVE_PATTERN.test(content));
+}
+
+export function extractMemoryEntryTimestamp(content: string): Date | undefined {
+	const match = MEMORY_TIMESTAMP_PATTERN.exec(content);
+	const rawTimestamp = match?.[1];
+	if (!rawTimestamp) return undefined;
+	const timestamp = new Date(rawTimestamp);
+	return Number.isNaN(timestamp.getTime()) ? undefined : timestamp;
+}
+
 export function validateMemoryEntryMetadata(content: string, target: MemoryTargetConfig): string | undefined {
-	const requiresTimestamp =
-		target.layer === "domain" || (target.layer === "long_term" && MARKET_SENSITIVE_PATTERN.test(content));
-	if (!requiresTimestamp || MEMORY_TIMESTAMP_PATTERN.test(content)) {
+	const requiresTimestamp = memoryEntryRequiresTimestamp(content, target);
+	if (!requiresTimestamp || extractMemoryEntryTimestamp(content)) {
 		return undefined;
 	}
 	return "Blocked memory content: domain or market-sensitive memory must include asOf or createdAt timestamp.";

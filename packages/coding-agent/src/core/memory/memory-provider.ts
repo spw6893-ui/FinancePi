@@ -35,6 +35,12 @@ export interface MemoryProviderTool {
 	parameters: TSchema;
 }
 
+export interface MemoryProviderToolCallContext {
+	cwd: string;
+	sessionId?: string;
+	namespace?: string;
+}
+
 export interface MemoryProviderError {
 	provider: string;
 	phase:
@@ -46,6 +52,7 @@ export interface MemoryProviderError {
 		| "onSessionEnd"
 		| "shutdown"
 		| "getToolDefinitions"
+		| "toolRegistration"
 		| "handleToolCall";
 	message: string;
 }
@@ -59,6 +66,6 @@ export interface MemoryProvider {
 	syncTurn?(turn: MemoryTurn, ctx: MemorySyncContext): Promise<void>;
 	onSessionEnd?(messages: AgentMessage[], ctx: MemorySessionContext): Promise<void>;
 	getToolDefinitions?(): MemoryProviderTool[];
-	handleToolCall?(toolName: string, args: unknown): Promise<unknown>;
+	handleToolCall?(toolName: string, args: unknown, ctx: MemoryProviderToolCallContext): Promise<unknown>;
 	shutdown?(): Promise<void>;
 }

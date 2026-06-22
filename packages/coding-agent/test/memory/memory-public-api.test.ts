@@ -1,10 +1,21 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
-import type { MemoryNamespaceConfig, MemoryProvider, MemorySessionSearchOptions } from "../../src/index.ts";
-import { createFinanceMemoryNamespace, MemoryManager, searchSessionMemory } from "../../src/index.ts";
+import type {
+	MemoryAuditTarget,
+	MemoryNamespaceConfig,
+	MemoryProvider,
+	MemoryProviderToolCallContext,
+	MemorySessionSearchOptions,
+} from "../../src/index.ts";
+import {
+	createFinanceMemoryNamespace,
+	MEMORY_ENTRY_DELIMITER,
+	MemoryManager,
+	searchSessionMemory,
+} from "../../src/index.ts";
 
 async function withTempCwd<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 	const cwd = await mkdtemp(join(tmpdir(), "pi-memory-public-api-"));
@@ -60,16 +71,89 @@ describe("memory public API", () => {
 		});
 	});
 
+	it("exports duplicate-entry audit metadata through the public memory API", async () => {
+		await withTempCwd(async (cwd) => {
+			const namespace: MemoryNamespaceConfig = {
+				namespace: "finance",
+				root: ".pi/memory/finance",
+				description: "Finance memory",
+				targets: [
+					{
+						target: "user",
+						layer: "user",
+						file: "USER.md",
+						charLimit: 1000,
+						injectPolicy: "always",
+						description: "User memory",
+					},
+				],
+			};
+			const manager = new MemoryManager({ cwd, namespaces: [namespace] });
+			const memoryPath = join(cwd, ".pi/memory/finance/USER.md");
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(memoryPath, ["用户 偏好 免费 数据源", "用户偏好免费数据源"].join(MEMORY_ENTRY_DELIMITER));
+
+			const auditTarget: MemoryAuditTarget | undefined = manager.getStore().audit({ namespace: "finance" })
+				.targetsDetail[0];
+			const staleEntries: number | undefined = auditTarget?.staleEntries;
+
+			expect(auditTarget?.duplicateEntries).toBe(1);
+			expect(staleEntries).toBe(0);
+			expect(auditTarget?.risk).toBe("duplicate_entries");
+		});
+	});
+
+	it("exports stale market-data audit metadata through the public memory API", async () => {
+		await withTempCwd(async (cwd) => {
+			const namespace: MemoryNamespaceConfig = {
+				namespace: "finance",
+				root: ".pi/memory/finance",
+				description: "Finance memory",
+				targets: [
+					{
+						target: "research",
+						layer: "domain",
+						file: "RESEARCH.md",
+						charLimit: 1000,
+						injectPolicy: "search_only",
+						description: "Research memory",
+					},
+				],
+			};
+			const manager = new MemoryManager({ cwd, namespaces: [namespace] });
+			await manager.getStore().write({
+				namespace: "finance",
+				target: "research",
+				action: "add",
+				content: "symbol=NVDA | asOf=2025-01-01 | Old margin thesis.",
+			});
+
+			const auditTarget: MemoryAuditTarget | undefined = manager
+				.getStore()
+				.audit({ namespace: "finance", now: new Date("2026-06-21T00:00:00.000Z") }).targetsDetail[0];
+
+			expect(auditTarget?.staleEntries).toBe(1);
+			expect(auditTarget?.risk).toBe("stale_market_data");
+		});
+	});
+
 	it("exports provider lifecycle types for external memory adapters", async () => {
+		const toolContext: MemoryProviderToolCallContext = {
+			cwd: process.cwd(),
+			namespace: "finance",
+			sessionId: "s1",
+		};
 		const provider: MemoryProvider = {
 			name: "test-memory-provider",
 			isAvailable: () => true,
 			initialize: async () => {},
 			prefetch: async (query) => `prefetched:${query}`,
+			handleToolCall: async (_toolName, _args, ctx) => `${ctx.namespace ?? "none"}:${ctx.sessionId ?? "none"}`,
 		};
 
 		expect(provider.name).toBe("test-memory-provider");
 		expect(await provider.prefetch?.("NVDA", { cwd: process.cwd(), namespace: "finance" })).toBe("prefetched:NVDA");
+		expect(await provider.handleToolCall?.("memory_external", {}, toolContext)).toBe("finance:s1");
 	});
 
 	it("exports session memory search helper for local recall adapters", async () => {

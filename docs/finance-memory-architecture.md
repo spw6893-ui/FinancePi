@@ -230,6 +230,7 @@ memory_search
 memory_write
 memory_compact
 memory_session_search
+memory_promote_session
 memory_research_report
 memory_audit
 memory_provider_audit
@@ -256,6 +257,7 @@ Finance 使用时固定 `namespace="finance"`。
 - 查某个 symbol 是否有历史 thesis。
 - 查长期 workflow 规则。
 - 返回 score/snippet，并按 query term 覆盖度和命中次数优先返回更相关条目。
+- 多行研究条目按完整 entry 召回；如果 symbol、thesis、risk 分布在同一条 memory 的多行里，搜索不会只返回单独一行。
 
 ### `memory_read`
 
@@ -268,7 +270,10 @@ Finance 使用时固定 `namespace="finance"`。
 
 ### `memory_audit`
 
-审计 persistent memory 的 namespace、target、路径、容量、条目数、注入策略和风险状态。
+审计 persistent memory 的 namespace、target、路径、容量、条目数、注入策略和风险状态，包括 `duplicate_entries`、`stale_market_data` 等现存重复或陈旧风险，以及 `duplicateEntries` / `staleEntries` 计数。`duplicate_entries` 覆盖完全相同条目和空白等价条目。
+当看到 `risk=duplicate_entries` 时，agent 应先 `memory_read` 对应 target，再用 `memory_compact` 合并成单条 curated memory。
+当看到 `risk=stale_market_data` 时，agent 应先 `memory_read` 对应 target，再用最新 finance/crypto/web/artifact 验证，并用带新 `asOf` / `createdAt` 的摘要替换或 compact。
+当前实现里，`stale_market_data` 的默认阈值是 180 天。
 
 用途：
 
@@ -278,7 +283,7 @@ Finance 使用时固定 `namespace="finance"`。
 
 ### `memory_provider_audit`
 
-审计外部 memory provider 的配置、可用状态和错误记录。
+审计外部 memory provider 的配置、可用状态和错误记录；重复 provider error 会去重，避免 registry 刷新把 audit 填满相同错误。
 
 用途：
 
@@ -300,7 +305,9 @@ Finance 使用时固定 `namespace="finance"`。
 规则：
 
 - 成功只返回 usage、entry count、message。
-- 失败才返回 current entries 供模型合并。
+- 成功 message 会标出 `skippedDuplicates` / `mergedDuplicates`，让模型知道本次写入是否被去重。
+- 失败才返回 current entries 预览供模型合并；预览会截断，避免大 memory target 全量 flush 污染上下文。
+- add/replace 写入会做空白规范化去重，避免同一条偏好、watchlist 或研究摘要因换行/多空格差异重复写入。
 - 不保存 raw price、raw news、大工具输出、secrets、unsourced claims。
 
 ### `memory_compact`
@@ -322,8 +329,22 @@ Finance 使用时固定 `namespace="finance"`。
 - 用户问“我们上次聊 NVDA 说了什么？”时召回历史讨论。
 - 查 prior conclusion、历史研究上下文、用户此前口头偏好。
 - 只返回 compact role/text/path/time/score/snippet 命中，不回显完整 session。
+- 返回的 line 是真实 JSONL 文件行号，可作为 `memory_promote_session` 的 source line。
+- 无法映射到真实 JSONL source line 的合成上下文不返回，避免后续 promotion 拿到不可验证的 `line=0`。
 - 按 query term 覆盖度和命中次数排序，优先返回更相关片段。
 - 搜索结果仍是历史上下文，不能当当前市场事实。
+
+### `memory_promote_session`
+
+把 `memory_session_search` 命中的历史 session 证据整理成 compact curated memory。
+
+规则：
+
+- 必须显式提供 `.pi/agent/sessions/*.jsonl` source path 和 line。
+- source path 必须是真实 `.jsonl` 文件，且位于项目 session root 或当前配置的 Pi 默认 session root；line 必须存在且对应 user/assistant message。
+- 写入内容必须是模型整理后的短条目，不是原始 session dump。
+- 写入时自动附加 `sourceSession=<path>:<line>`，便于后续复查来源。
+- 市场敏感内容仍必须包含 `asOf=` 或 `createdAt=`。
 
 ### `memory_research_report`
 
@@ -339,7 +360,7 @@ Finance 使用时固定 `namespace="finance"`。
 
 - `summary` 必须短小，并为市场敏感内容包含 `asOf=` 或 `createdAt=`。
 - `content` 可以较长，但不进入 memory prompt；仍会扫描 secret、prompt-injection 和 invisible Unicode。
-- `sourcePaths` 必须是项目内相对路径。
+- `sourcePaths` 必须是项目内相对文件路径，且文件必须存在；缺失 source path 或目录路径不会写 memory index，也不会创建 `.pi/research` 报告。
 - compact memory index 写入失败时不落 `.pi/research` 文件；report 文件写入失败时会回滚 compact memory index。
 
 ## System Prompt Integration
@@ -498,7 +519,7 @@ AgentSession 在构建 system prompt 时：
 
 1. 从已加载 extensions 收集 memory namespaces。
 2. 创建 `MemoryManager({ cwd, namespaces, providers })`。
-3. 初始化可用 provider。
+3. 初始化可用 provider；当当前 session 只有一个 memory namespace 时，会把该 namespace 作为 lifecycle ctx 传给 provider。
 4. 注册 core memory tools 和 provider 自带 memory tools。
 5. 调用 `buildMemorySystemPromptBlock()`。
 6. 追加 provider 的 system prompt block。
@@ -532,13 +553,17 @@ Finance extension 只负责：
 - 新增 extension API：`registerMemoryNamespace`。
 - AgentSession 统一注入 memory block。
 - Finance extension 不再手写 memory prompt 拼接。
-- Core 自动暴露 `memory_list/read/search/write/session_search/provider_audit` 对应的 `memory_*` 工具，包括 `memory_session_search` 和 `memory_provider_audit`。
+- Core 自动暴露 `memory_list/read/search/write/session_search/promote_session/provider_audit` 对应的 `memory_*` 工具，包括 `memory_session_search`、`memory_promote_session` 和 `memory_provider_audit`。
 - 新增 extension API：`registerMemoryProvider`。
 - AgentSession 初始化 provider 并追加 provider prompt block。
+- 只有 provider、没有本地 memory namespace 的 extension 仍会暴露 `memory_provider_audit`，用于排查外部 memory 服务可用性和错误。
 - 每轮 prompt 前调用 provider `prefetch()`，把 compact recall 临时追加到当前 turn system prompt，且不写入 session。
-- Session runtime teardown 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
+- 普通 user/assistant turn 完成后调用 provider `syncTurn()`。
+- Session runtime teardown 或直接 `AgentSession.dispose()` 时调用 provider `onSessionEnd()`，然后执行 `shutdown()`。
+- 当只有一个 memory namespace 时，`MemoryManager` 会把该 namespace 默认传给 `initialize()`、`prefetch()`、`syncTurn()` 和 `onSessionEnd()`；AgentSession 显式传入时也会保留该 namespace，让 Hermes-style adapter 能按 finance/coding/research 等 namespace 隔离记忆。
 - Provider 可通过 `getToolDefinitions()` / `handleToolCall()` 暴露自带 memory tools，由 core 注册到当前 AgentSession。
-- Provider 自带 tool 与 core memory tool 同名时，core memory tool 保持优先，避免外部 provider 覆盖 `memory_write` 等安全边界。
+- Provider 自带 tool 与 core memory tool 同名时，core memory tool 保持优先；冲突的 provider tool 会被跳过并写入 `memory_provider_audit`，避免外部 provider 覆盖 `memory_write` 等安全边界。
+- 多个 provider 暴露同名自带 tool 时，第一个 provider 的 tool 保留，后续同名 tool 跳过并写入 `memory_provider_audit`，避免外部记忆工具歧义。
 - Provider lifecycle 各阶段失败只记录 provider error，不中断主 agent 或其他 provider。
 - Provider 自带 tool 注册/调用失败时走 compact failure path，不中断 FinancePi tool loop，并写入 provider audit 错误记录。
 
@@ -583,10 +608,12 @@ interface MemoryProvider {
   syncTurn?(turn, ctx): Promise<void>;
   onSessionEnd?(messages, ctx): Promise<void>;
   getToolDefinitions?(): MemoryProviderTool[];
-  handleToolCall?(toolName, args): Promise<unknown>;
+  handleToolCall?(toolName, args, ctx): Promise<unknown>;
   shutdown?(): Promise<void>;
 }
 ```
+
+`handleToolCall()` 的 ctx 包含 `cwd`、`sessionId` 和当前单 memory namespace。FinancePi 场景下这让外部 Hermes-style adapter 可以把 provider-owned tool 的索引、召回和写入限定在当前项目与 `finance` namespace 内，避免和 coding/research 记忆混用。
 
 可接：
 
@@ -629,18 +656,35 @@ interface MemoryProvider {
 - 2026-06-21：补充四层 memory 架构决策和 provider 自带工具注册路径。
 - 2026-06-21：新增 `memory_research_report`，把长研究报告落盘到 `.pi/research` 并在 memory 中保存 compact index。
 - 2026-06-21：增强 `memory_session_search`，补充 query coverage 排序和 snippet 输出。
+- 2026-06-21：新增 `memory_promote_session`，用于把历史 session 命中显式整理成带 `sourceSession` 的 curated memory，并校验 sourceSession 指向真实 `.jsonl` user/assistant message 行。
+- 2026-06-21：增强 `memory_session_search`，过滤无法映射到真实 JSONL source line 的历史上下文，保证返回结果可作为 session promotion 证据。
+- 2026-06-21：修正 `memory_promote_session` 的 source path 校验，支持默认 `memory_session_search` 返回的配置化 Pi session root，同时继续拒绝非 session root 任意路径。
 - 2026-06-21：增强 `memory_search`，补充 persistent memory 的 query coverage 排序和 snippet 输出。
+- 2026-06-21：增强 `memory_search`，对 delimiter-separated multi-line memory entry 做 entry-level 召回，避免 symbol/thesis/risk 分散在多行时被逐行搜索拆碎。
+- 2026-06-21：补充 `memory_write` 对 add/replace 写入的空白规范化去重规则，减少重复 memory 污染。
+- 2026-06-21：补充 `memory_write` 失败时 current entries 预览截断规则，避免错误路径全量回显长期记忆。
+- 2026-06-21：补充 `memory_write` 成功 message 的 duplicate 去重计数，避免模型误判已写入新条目。
 - 2026-06-21：补充 `memory_research_report` 的 report 内容安全扫描和无孤立文件写入规则。
 - 2026-06-21：补充 `memory_research_report` 文件写入失败时回滚 compact memory index 的规则。
+- 2026-06-21：补充 `memory_research_report` 的 `sourcePaths` 存在性校验，避免写入不可复查的研究索引。
 - 2026-06-21：新增 `memory_audit`，用于 compact memory health/capacity 审计。
+- 2026-06-21：补充 `memory_audit` 的 `duplicate_entries` 风险，用于发现手工编辑或历史文件中的重复 memory。
+- 2026-06-21：补充 `memory_audit` 的 `duplicateEntries` 计数，让重复 cleanup 更可操作。
+- 2026-06-21：补充 `risk=duplicate_entries` 的 agentic cleanup guidance，要求先读后 compact。
+- 2026-06-21：补充 `memory_audit` 的 `stale_market_data` 风险和 `staleEntries` 计数，让旧市场记忆复核更可操作。
 - 2026-06-21：新增 `memory_provider_audit`，用于外部 memory provider 状态和错误审计。
 - 2026-06-21：新增 `memory_compact`，用于安全压缩 long-lived memory target。
 - 2026-06-21：补充 provider lifecycle 错误隔离规则，避免外部 memory provider 故障拖垮 FinancePi。
 - 2026-06-21：补充 core memory prompt 对 `memory_write`、`memory_audit` 和 `memory_compact` 的 agentic loop 指导。
 - 2026-06-21：补充 provider 自带 memory tool 注册/执行的错误隔离和 audit 记录规则。
 - 2026-06-21：补充 provider 自带 tool 不得覆盖 core memory tools 的注册优先级规则。
+- 2026-06-21：补充 provider 自带 tool 与 core memory tool 同名冲突会被跳过并写入 `memory_provider_audit`。
+- 2026-06-21：补充多个 provider 自带 tool 同名冲突会跳过后续 tool 并写入 `memory_provider_audit`。
+- 2026-06-21：补充 provider audit 对重复 provider error 的去重规则，避免 registry 刷新污染 audit。
+- 2026-06-21：补充 `MemoryManager` 对单 namespace provider lifecycle ctx 的默认注入，减少调用方漏传 namespace 的风险。
 - 2026-06-21：补充 provider `prefetch()` 注入当前 turn system prompt 的召回路径。
 - 2026-06-21：补充 memory provider 在 session runtime teardown 时的 `onSessionEnd()` 生命周期。
+- 2026-06-21：补充直接 `AgentSession.dispose()` 时也会先调用 provider `onSessionEnd()` 再 `shutdown()`，避免长记忆 provider 丢失最后整理机会。
 - 2026-06-21：新增 `memory_session_search` 文档，说明历史 session 召回边界。
 - 2026-06-21：更新 core integration 状态，补充 memory provider lifecycle 和 core 自动工具注册。
 - 2026-06-21：新增 FinancePi memory architecture 设计文档，基于当前 core memory MVP、Finance namespace 和 Hermes-style 分层记忆方案整理。

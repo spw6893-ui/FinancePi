@@ -40,6 +40,24 @@ function namespace(): MemoryNamespaceConfig {
 	};
 }
 
+function largeNamespace(): MemoryNamespaceConfig {
+	return {
+		namespace: "finance",
+		root: ".pi/memory/finance",
+		description: "Finance memory",
+		targets: [
+			{
+				target: "research",
+				layer: "domain",
+				file: "RESEARCH.md",
+				charLimit: 5000,
+				injectPolicy: "search_only",
+				description: "Research memory",
+			},
+		],
+	};
+}
+
 async function withTempCwd<T>(fn: (cwd: string) => Promise<T>): Promise<T> {
 	const cwd = await mkdtemp(join(tmpdir(), "pi-memory-tools-"));
 	try {
@@ -57,6 +75,18 @@ describe("memory tools", () => {
 			const ctx = { cwd } as never;
 
 			const writeResult = await write.execute(
+				"write",
+				{
+					namespace: "finance",
+					target: "user",
+					action: "add",
+					content: "用户偏好 Binance 作为 crypto 默认数据源。",
+				},
+				undefined,
+				undefined,
+				ctx,
+			);
+			const duplicateWriteResult = await write.execute(
 				"write",
 				{
 					namespace: "finance",
@@ -91,6 +121,7 @@ describe("memory tools", () => {
 			);
 
 			expect(text(writeResult)).toContain("memory_write: success");
+			expect(text(duplicateWriteResult)).toContain("skippedDuplicates=1");
 			expect(text(listResult)).toContain("finance/user");
 			expect(text(searchResult)).toContain(".pi/memory/finance/USER.md:1");
 			expect(text(readResult)).toContain("Binance");
@@ -115,6 +146,42 @@ describe("memory tools", () => {
 			expect(output).toContain("inject=always");
 			expect(output).toContain("risk=ok");
 			expect(output).toContain("finance/research");
+			expect(audit?.promptGuidelines?.join("\n")).toContain("risk=duplicate_entries");
+			expect(audit?.promptGuidelines?.join("\n")).toContain("risk=stale_market_data");
+		});
+	});
+
+	it("formats duplicate entry counts in memory audit output", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/USER.md"),
+				["用户偏好免费公开金融数据源。", "用户偏好免费公开金融\n\n 数据源。"].join("\n§\n"),
+			);
+			const audit = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_audit");
+
+			const result = await audit?.execute("audit", { namespace: "finance" }, undefined, undefined, { cwd } as never);
+			const output = text(result);
+
+			expect(output).toContain("risk=duplicate_entries");
+			expect(output).toContain("duplicateEntries=1");
+		});
+	});
+
+	it("formats stale market data counts in memory audit output", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				"symbol=NVDA | asOf=2025-01-01 | Blackwell margin thesis should be reviewed.",
+			);
+			const audit = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_audit");
+
+			const result = await audit?.execute("audit", { namespace: "finance" }, undefined, undefined, { cwd } as never);
+			const output = text(result);
+
+			expect(output).toContain("risk=stale_market_data");
+			expect(output).toContain("staleEntries=1");
 		});
 	});
 
@@ -201,6 +268,40 @@ describe("memory tools", () => {
 			expect((result as any).isError).toBe(true);
 			expect(text(result)).toContain("memory_write: error");
 			expect(text(readResult)).not.toContain("Authorization");
+		});
+	});
+
+	it("truncates large current entries in memory write errors", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory/finance"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/memory/finance/RESEARCH.md"),
+				[
+					`symbol=NVDA | asOf=2026-06-20 | ${"first-entry ".repeat(170)}`,
+					`symbol=NVDA | asOf=2026-06-20 | ${"second-entry ".repeat(170)}`,
+				].join("\n§\n"),
+			);
+			const write = createMemoryTools([largeNamespace()]).find((tool) => tool.name === "memory_write");
+
+			const result = await write?.execute(
+				"write",
+				{
+					namespace: "finance",
+					target: "research",
+					action: "add",
+					content: `symbol=NVDA | asOf=2026-06-20 | ${"new-entry ".repeat(200)}`,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect((result as any).isError).toBe(true);
+			expect(output).toContain("memory_write: error");
+			expect(output).toContain("currentEntries=");
+			expect(output).toContain("[truncated]");
+			expect(output.length).toBeLessThan(1800);
 		});
 	});
 
@@ -353,8 +454,332 @@ describe("memory tools", () => {
 		});
 	});
 
+	it("does not return prior session matches without promotable source line evidence", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			await mkdir(sessionDir, { recursive: true });
+			await writeFile(
+				join(sessionDir, "legacy.jsonl"),
+				[
+					JSON.stringify({
+						type: "session",
+						version: 3,
+						id: "legacy",
+						timestamp: "2026-06-21T00:00:00.000Z",
+						cwd,
+					}),
+					JSON.stringify({
+						type: "message",
+						parentId: null,
+						timestamp: "2026-06-21T00:00:01.000Z",
+						message: { role: "user", content: "NVDA orphan memory without entry id", timestamp: 1 },
+					}),
+				].join("\n"),
+			);
+			const sessionSearch = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_session_search");
+
+			const result = await sessionSearch?.execute(
+				"session-search",
+				{ query: "NVDA orphan", sessionDir, limit: 3 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_session_search: no matches");
+			expect(output).not.toContain(":0:");
+			expect(output).not.toContain("orphan memory");
+		});
+	});
+
+	it("promotes a prior session match into compact curated memory with source evidence", async () => {
+		await withTempCwd(async (cwd) => {
+			const sessionDir = join(cwd, ".pi/agent/sessions");
+			const session = SessionManager.create(cwd, sessionDir);
+			session.appendMessage({
+				role: "assistant",
+				content: [{ type: "text", text: "NVDA prior thesis: Blackwell demand and margin risk, asOf=2026-06-20." }],
+				api: "responses",
+				provider: "openai",
+				model: "gpt-5.5",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 2,
+			});
+			const tools = createMemoryTools([namespace()]);
+			const sessionSearch = tools.find((tool) => tool.name === "memory_session_search");
+			const promote = tools.find((tool) => tool.name === "memory_promote_session");
+			const searchResult = await sessionSearch?.execute(
+				"session-search",
+				{ query: "NVDA Blackwell margin", sessionDir, limit: 1 },
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+			const sourceMatch = text(searchResult).match(/(\.pi\/agent\/sessions\/[^:]+\.jsonl):(\d+):/);
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content:
+						"symbol=NVDA | asOf=2026-06-20 | Prior session thesis: Blackwell demand is key; monitor margin risk.",
+					sourceSessionPath: sourceMatch?.[1],
+					sourceLine: Number(sourceMatch?.[2]),
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			const output = text(result);
+			expect(output).toContain("memory_promote_session: success");
+			expect(output).toContain("sourceSession=");
+			const memoryIndex = await readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8");
+			expect(memoryIndex).toContain("Prior session thesis");
+			expect(memoryIndex).toContain(`sourceSession=${sourceMatch?.[1]}:${sourceMatch?.[2]}`);
+		});
+	});
+
+	it("rejects session promotion without an existing project-relative session source", async () => {
+		await withTempCwd(async (cwd) => {
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Missing source should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/missing.jsonl",
+					sourceLine: 1,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source path does not exist");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("rejects session promotion paths that normalize outside the session directory", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/memory"), { recursive: true });
+			await writeFile(join(cwd, ".pi/memory/fake-session.jsonl"), "{}\n");
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Escaped path should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/../../memory/fake-session.jsonl",
+					sourceLine: 1,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source path must be under .pi/agent/sessions");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("promotes a default session search match from the configured Pi agent dir", async () => {
+		await withTempCwd(async (cwd) => {
+			const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			process.env.PI_CODING_AGENT_DIR = join(cwd, ".pi/agent-home");
+			try {
+				const session = SessionManager.create(cwd);
+				session.appendMessage({
+					role: "assistant",
+					content: [{ type: "text", text: "NVDA default session thesis, asOf=2026-06-20." }],
+					api: "responses",
+					provider: "openai",
+					model: "gpt-5.5",
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "stop",
+					timestamp: 2,
+				});
+
+				const tools = createMemoryTools([namespace()]);
+				const sessionSearch = tools.find((tool) => tool.name === "memory_session_search");
+				const promote = tools.find((tool) => tool.name === "memory_promote_session");
+				const searchResult = await sessionSearch?.execute(
+					"session-search",
+					{ query: "NVDA default session", limit: 1 },
+					undefined,
+					undefined,
+					{ cwd } as never,
+				);
+				const sourceMatch = text(searchResult).match(/(\.pi\/agent-home\/sessions\/[^:]+\.jsonl):(\d+):/);
+
+				expect(sourceMatch?.[1]).toBeTruthy();
+				expect(sourceMatch?.[2]).toBeTruthy();
+
+				const result = await promote?.execute(
+					"promote-session",
+					{
+						namespace: "finance",
+						target: "research",
+						content: "symbol=NVDA | asOf=2026-06-20 | Default session search result should be promotable.",
+						sourceSessionPath: sourceMatch?.[1],
+						sourceLine: Number(sourceMatch?.[2]),
+					},
+					undefined,
+					undefined,
+					{ cwd } as never,
+				);
+
+				const output = text(result);
+				expect(output).toContain("memory_promote_session: success");
+				expect(output).toContain("sourceSession=");
+				const memoryIndex = await readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8");
+				expect(memoryIndex).toContain("Default session search result should be promotable.");
+				expect(memoryIndex).toContain(`sourceSession=${sourceMatch?.[1]}:${sourceMatch?.[2]}`);
+			} finally {
+				if (previousAgentDir === undefined) {
+					delete process.env.PI_CODING_AGENT_DIR;
+				} else {
+					process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+				}
+			}
+		});
+	});
+
+	it("rejects session promotion sources that are not jsonl files", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/agent/sessions"), { recursive: true });
+			await writeFile(join(cwd, ".pi/agent/sessions/not-session.txt"), "{}\n");
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Non-jsonl source should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/not-session.txt",
+					sourceLine: 1,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source path must be a .jsonl file");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("rejects session promotion sources with missing source lines", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/agent/sessions"), { recursive: true });
+			await writeFile(join(cwd, ".pi/agent/sessions/session.jsonl"), "{}\n");
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Missing line source should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/session.jsonl",
+					sourceLine: 2,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source line does not exist");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("rejects session promotion sources whose lines are not message entries", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/agent/sessions"), { recursive: true });
+			await writeFile(
+				join(cwd, ".pi/agent/sessions/session.jsonl"),
+				`${JSON.stringify({ type: "session", id: "s1" })}\n${JSON.stringify({ type: "custom", value: 1 })}\n`,
+			);
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Non-message source should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/session.jsonl",
+					sourceLine: 2,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source line is not a user/assistant message");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
+	it("rejects malformed session promotion source lines", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/agent/sessions"), { recursive: true });
+			await writeFile(join(cwd, ".pi/agent/sessions/session.jsonl"), "{not json}\n");
+			const promote = createMemoryTools([namespace()]).find((tool) => tool.name === "memory_promote_session");
+
+			const result = await promote?.execute(
+				"promote-session",
+				{
+					namespace: "finance",
+					target: "research",
+					content: "symbol=NVDA | asOf=2026-06-20 | Malformed source should not promote.",
+					sourceSessionPath: ".pi/agent/sessions/session.jsonl",
+					sourceLine: 1,
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("session source line is not valid json");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+		});
+	});
+
 	it("writes a research report artifact and indexes only compact memory", async () => {
 		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/artifacts/market-data"), { recursive: true });
+			await writeFile(join(cwd, ".pi/artifacts/market-data/nvda.csv"), "date,close\n2026-06-21,100\n");
 			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
 
 			const result = await tool?.execute(
@@ -433,6 +858,57 @@ describe("memory tools", () => {
 
 			expect((result as any).isError).toBe(true);
 			expect(text(result)).toContain("asOf or createdAt");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
+		});
+	});
+
+	it("rejects research report source paths that do not exist", async () => {
+		await withTempCwd(async (cwd) => {
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "Missing source path",
+					summary: "symbol=NVDA | asOf=2026-06-21 | source path must exist.",
+					content: "# Missing source path\n\nThis should not create a report.",
+					sourcePaths: [".pi/artifacts/market-data/missing.csv"],
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("source path does not exist");
+			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
+			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
+		});
+	});
+
+	it("rejects research report source paths that are directories", async () => {
+		await withTempCwd(async (cwd) => {
+			await mkdir(join(cwd, ".pi/artifacts/market-data"), { recursive: true });
+			const tool = createMemoryTools([namespace()]).find((item) => item.name === "memory_research_report");
+
+			const result = await tool?.execute(
+				"research-report",
+				{
+					namespace: "finance",
+					title: "Directory source path",
+					summary: "symbol=NVDA | asOf=2026-06-21 | source path must be a file.",
+					content: "# Directory source path\n\nThis should not create a report.",
+					sourcePaths: [".pi/artifacts/market-data"],
+				},
+				undefined,
+				undefined,
+				{ cwd } as never,
+			);
+
+			expect((result as any).isError).toBe(true);
+			expect(text(result)).toContain("source path must be a file");
 			await expect(readFile(join(cwd, ".pi/memory/finance/RESEARCH.md"), "utf8")).rejects.toThrow();
 			await expect(readdir(join(cwd, ".pi/research"))).rejects.toThrow();
 		});

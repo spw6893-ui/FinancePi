@@ -10,11 +10,32 @@
 - Added score and snippet output to persistent memory search, with query coverage ranking across memory targets.
 - Added unsafe-content scanning and orphan-file prevention for core memory research reports.
 - Added compact memory index rollback when core memory research report file writes fail.
+- Added source-path file existence validation for core memory research reports before writing compact memory indexes.
 - Added `memory_audit` for compact persistent memory health, capacity, path, and inject-policy inspection.
+- Added `duplicate_entries` memory audit risk detection for existing equivalent duplicate entries.
+- Added `duplicateEntries` counts to memory audit output for more actionable cleanup.
+- Added `stale_market_data` memory audit risk detection and `staleEntries` counts for old timestamped market-sensitive memory.
+- Added entry-level persistent memory search for delimiter-separated memory entries whose query terms span multiple lines.
+- Added `memory_promote_session` to promote compact prior session evidence into curated persistent memory with explicit source session references.
+- Added source-session validation for session promotion, requiring a real `.jsonl` user/assistant message line.
+- Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
+- Added public API exports for memory audit and compact result types used by external extensions.
+- Added project/session/namespace context for external memory provider tool calls.
 - Added `memory_provider_audit` for compact external memory provider state and error inspection.
+- Added `memory_provider_audit` exposure for provider-only extensions that do not register a local memory namespace.
 - Added `memory_compact` for safe persistent memory target compaction with stale entry-count protection.
 - Added separate Binance-backed crypto tools for spot quote, klines, funding, open interest, and full crypto context.
-- Changed core memory tool registration to keep core tools ahead of external memory provider tools with the same name.
+- Changed core memory tool registration to skip external memory provider tools with conflicting core memory tool names and report those collisions in provider audit.
+- Changed memory provider tool registration to skip duplicate tool names from later providers and report those collisions in provider audit.
+- Changed memory provider audit recording to deduplicate identical provider errors across repeated tool-registry refreshes.
+- Changed memory provider lifecycle calls to pass the active single memory namespace, enabling namespace-aware external adapters.
+- Changed `MemoryManager` to default provider lifecycle context to the single configured namespace when callers omit `namespace`.
+- Changed direct session disposal to notify memory providers with `onSessionEnd` before shutdown.
+- Changed persistent memory add/replace writes to skip duplicate entries with equivalent whitespace, reducing repeated memory pollution.
+- Changed persistent memory write success messages to report skipped or merged duplicate entries.
+- Changed persistent memory reads and audits to preserve existing exact duplicate entries so audit can report them instead of silently hiding them.
+- Changed core memory prompt/tool guidance to direct `duplicate_entries` cleanup through `memory_read` plus `memory_compact`.
+- Changed `memory_write` error output to truncate large current-entry previews, avoiding long memory dumps in tool context.
 - Changed external memory provider tool registration/execution failures to return compact failure paths and appear in provider audit instead of interrupting the agent tool loop.
 - Changed core memory prompt guidance to make explicit remember-write and audit/compact maintenance behavior available to the model.
 - Changed core memory provider lifecycle handling to isolate provider failures and retain provider error audit records.
@@ -22,6 +43,7 @@
 
 ### Fixed
 
+- Fixed `memory_promote_session` to accept source paths from the configured Pi session directory returned by default `memory_session_search`, while still rejecting arbitrary paths outside approved session roots.
 - Fixed fuzzy `edit` matches to preserve untouched line blocks instead of rewriting the whole file through normalized content ([#5899](https://github.com/earendil-works/pi/issues/5899)).
 - Fixed bash commands through legacy WSL `bash.exe` to pass scripts over stdin so shell variables expand in the target bash ([#5893](https://github.com/earendil-works/pi/issues/5893)).
 - Fixed `/model` to hide GitHub Copilot models that are unavailable to the authenticated account ([#5897](https://github.com/earendil-works/pi/issues/5897)).

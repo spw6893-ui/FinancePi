@@ -7,6 +7,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { InputEvent } from "../../src/core/extensions/index.ts";
 import type { MemoryProvider } from "../../src/core/memory/memory-provider.ts";
+import type { MemoryNamespaceConfig } from "../../src/core/memory/memory-types.ts";
 import { createFinanceMemoryNamespace } from "../../src/core/memory/namespace-registry.ts";
 import type { PromptTemplate } from "../../src/core/prompt-templates.ts";
 import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
@@ -71,6 +72,177 @@ describe("AgentSession prompt characterization", () => {
 		await harness.session.prompt("remember NVDA");
 
 		expect(syncedTurns).toEqual([`${harness.session.sessionId}:remember NVDA->noted`]);
+	});
+
+	it("passes the active memory namespace through provider lifecycle hooks", async () => {
+		const providerEvents: string[] = [];
+		const provider: MemoryProvider = {
+			name: "namespace-memory",
+			isAvailable: () => true,
+			initialize: async (ctx) => {
+				providerEvents.push(`initialize:${ctx.namespace ?? "none"}`);
+			},
+			systemPromptBlock: async () => "provider prompt",
+			prefetch: async (_query, ctx) => {
+				providerEvents.push(`prefetch:${ctx.namespace ?? "none"}`);
+				return "";
+			},
+			syncTurn: async (_turn, ctx) => {
+				providerEvents.push(`sync:${ctx.namespace ?? "none"}`);
+			},
+			onSessionEnd: async (_messages, ctx) => {
+				providerEvents.push(`end:${ctx.namespace ?? "none"}`);
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-namespace>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		await harness.session.bindExtensions({});
+		harness.setResponses([fauxAssistantMessage("noted")]);
+		await harness.session.prompt("NVDA memory namespace");
+		await harness.session.closeMemoryProviders();
+
+		expect(providerEvents).toEqual(["initialize:finance", "prefetch:finance", "sync:finance", "end:finance"]);
+	});
+
+	it("notifies memory providers on direct session dispose before shutdown", async () => {
+		const providerEvents: string[] = [];
+		const provider: MemoryProvider = {
+			name: "dispose-memory",
+			isAvailable: () => true,
+			initialize: async () => {
+				providerEvents.push("initialize");
+			},
+			onSessionEnd: async (messages, ctx) => {
+				providerEvents.push(`end:${messages.length}:${ctx.namespace ?? "none"}`);
+			},
+			shutdown: async () => {
+				providerEvents.push("shutdown");
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-dispose>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		await harness.session.bindExtensions({});
+		harness.setResponses([fauxAssistantMessage("noted")]);
+		await harness.session.prompt("dispose memory");
+
+		harness.session.dispose();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(providerEvents).toEqual(["initialize", "end:2:finance", "shutdown"]);
+	});
+
+	it("still shuts down memory providers on direct session dispose when onSessionEnd fails", async () => {
+		const providerEvents: string[] = [];
+		const provider: MemoryProvider = {
+			name: "dispose-memory",
+			isAvailable: () => true,
+			initialize: async () => {
+				providerEvents.push("initialize");
+			},
+			onSessionEnd: async () => {
+				providerEvents.push("end");
+				throw new Error("dispose memory end failed");
+			},
+			shutdown: async () => {
+				providerEvents.push("shutdown");
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-dispose-failure>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		await harness.session.bindExtensions({});
+		harness.session.dispose();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(providerEvents).toEqual(["initialize", "end", "shutdown"]);
+	});
+
+	it("does not guess a provider namespace when multiple memory namespaces are active", async () => {
+		const providerEvents: string[] = [];
+		const researchNamespace: MemoryNamespaceConfig = {
+			namespace: "research",
+			root: ".pi/memory/research",
+			description: "Research memory",
+			targets: [
+				{
+					target: "notes",
+					layer: "domain",
+					file: "NOTES.md",
+					charLimit: 1000,
+					injectPolicy: "search_only",
+					description: "Research notes",
+				},
+			],
+		};
+		const provider: MemoryProvider = {
+			name: "namespace-memory",
+			isAvailable: () => true,
+			initialize: async (ctx) => {
+				providerEvents.push(`initialize:${ctx.namespace ?? "none"}`);
+			},
+			prefetch: async (_query, ctx) => {
+				providerEvents.push(`prefetch:${ctx.namespace ?? "none"}`);
+				return "";
+			},
+			syncTurn: async (_turn, ctx) => {
+				providerEvents.push(`sync:${ctx.namespace ?? "none"}`);
+			},
+			onSessionEnd: async (_messages, ctx) => {
+				providerEvents.push(`end:${ctx.namespace ?? "none"}`);
+			},
+		};
+		const harness = await createHarness({
+			extensionFactories: [
+				{
+					path: "<memory-multi-namespace>",
+					factory: (pi) => {
+						pi.registerMemoryNamespace(createFinanceMemoryNamespace());
+						pi.registerMemoryNamespace(researchNamespace);
+						pi.registerMemoryProvider(provider);
+					},
+				},
+			],
+		});
+		harnesses.push(harness);
+
+		await harness.session.bindExtensions({});
+		harness.setResponses([fauxAssistantMessage("noted")]);
+		await harness.session.prompt("NVDA memory namespace");
+		await harness.session.closeMemoryProviders();
+
+		expect(providerEvents).toEqual(["initialize:none", "prefetch:none", "sync:none", "end:none"]);
 	});
 
 	it("does not sync intermediate tool-use turns to memory providers", async () => {
@@ -225,7 +397,8 @@ describe("AgentSession prompt characterization", () => {
 
 		await harness.session.prompt("NVDA");
 
-		expect(providerSystemPrompt.length).toBeLessThan(12_000);
+		const prefetchBlock = providerSystemPrompt.slice(providerSystemPrompt.indexOf("MEMORY PROVIDER PREFETCH:"));
+		expect(prefetchBlock.length).toBeLessThan(2_000);
 		expect(providerSystemPrompt).toContain("[truncated]");
 	});
 

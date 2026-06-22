@@ -140,6 +140,7 @@ describe("finance memory namespace", () => {
 				expect(allToolNames).toContain("memory_write");
 				expect(allToolNames).toContain("memory_compact");
 				expect(allToolNames).toContain("memory_session_search");
+				expect(allToolNames).toContain("memory_promote_session");
 				expect(allToolNames).toContain("memory_research_report");
 				expect(allToolNames).toContain("memory_audit");
 				expect(allToolNames).toContain("memory_provider_audit");
@@ -150,6 +151,7 @@ describe("finance memory namespace", () => {
 					"memory_write",
 					"memory_compact",
 					"memory_session_search",
+					"memory_promote_session",
 					"memory_research_report",
 					"memory_audit",
 					"memory_provider_audit",
@@ -157,6 +159,42 @@ describe("finance memory namespace", () => {
 				expect(session.systemPrompt).toContain("- memory_search: Search persistent memory");
 				expect(session.systemPrompt).toContain("- memory_session_search: Search prior project session memory");
 				expect(session.systemPrompt).toContain("CORE MEMORY CONTEXT");
+			} finally {
+				session.dispose();
+			}
+		});
+	});
+
+	it("exposes memory provider audit when an extension only registers a provider", async () => {
+		await withTempCwd(async (cwd) => {
+			const provider: MemoryProvider = {
+				name: "provider-only-memory",
+				isAvailable: () => true,
+				initialize: async () => {},
+			};
+			const result = await createTestExtensionsResult(
+				[
+					{
+						path: "<provider-only-memory>",
+						factory: (pi) => {
+							pi.registerMemoryProvider(provider);
+						},
+					},
+				],
+				cwd,
+			);
+			const session = createMemoryTestSession(cwd, result);
+
+			try {
+				await session.bindExtensions({});
+				const tool = session.getToolDefinition("memory_provider_audit");
+				const output = await tool?.execute("audit", {}, undefined, undefined, { cwd } as never);
+
+				expect(session.getActiveToolNames()).toContain("memory_provider_audit");
+				expect(getText(output)).toContain("memory_provider_audit: configured=1 available=1 errors=0");
+				expect(getText(output)).toContain("configured=provider-only-memory");
+				expect(getText(output)).toContain("available=provider-only-memory");
+				expect(session.systemPrompt).not.toContain("CORE MEMORY CONTEXT");
 			} finally {
 				session.dispose();
 			}
@@ -208,6 +246,9 @@ describe("finance memory namespace", () => {
 					events.push(`init:${ctx.sessionId ?? "none"}`);
 				},
 				systemPromptBlock: async () => "PROVIDER MEMORY CONTEXT",
+				onSessionEnd: async (_messages, ctx) => {
+					events.push(`end:${ctx.namespace ?? "none"}`);
+				},
 				shutdown: async () => {
 					events.push("shutdown");
 				},
@@ -231,12 +272,14 @@ describe("finance memory namespace", () => {
 			expect(session.systemPrompt).toContain("PROVIDER MEMORY CONTEXT");
 
 			session.dispose();
-			expect(events).toEqual([`init:${session.sessionId}`, "shutdown"]);
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(events).toEqual([`init:${session.sessionId}`, "end:finance", "shutdown"]);
 		});
 	});
 
 	it("exposes available memory provider tools through AgentSession", async () => {
 		await withTempCwd(async (cwd) => {
+			let toolContext = "";
 			const provider: MemoryProvider = {
 				name: "provider-tools",
 				isAvailable: () => true,
@@ -248,8 +291,9 @@ describe("finance memory namespace", () => {
 						parameters: Type.Object({ query: Type.String() }),
 					},
 				],
-				handleToolCall: async (toolName, args) => {
+				handleToolCall: async (toolName, args, ctx) => {
 					const query = typeof args === "object" && args !== null && "query" in args ? String(args.query) : "";
+					toolContext = `${ctx.cwd}:${ctx.namespace ?? "none"}:${ctx.sessionId ?? "none"}`;
 					return `${toolName}:${query}`;
 				},
 			};
@@ -274,6 +318,7 @@ describe("finance memory namespace", () => {
 
 				expect(session.getActiveToolNames()).toContain("memory_external_lookup");
 				expect(getText(output)).toContain("memory_external_lookup:NVDA");
+				expect(toolContext).toBe(`${cwd}:finance:${session.sessionId}`);
 			} finally {
 				session.dispose();
 			}
@@ -324,9 +369,14 @@ describe("finance memory namespace", () => {
 					undefined,
 					{ cwd } as never,
 				);
+				const audit = session.getToolDefinition("memory_provider_audit");
+				const auditOutput = await audit?.execute("audit", {}, undefined, undefined, { cwd } as never);
 
 				expect(getText(output)).toContain("memory_write: success");
 				expect(getText(output)).not.toContain("provider override executed");
+				expect(getText(auditOutput)).toContain("memory_provider_audit: configured=1 available=1 errors=1");
+				expect(getText(auditOutput)).toContain("error provider=provider-tools phase=toolRegistration");
+				expect(getText(auditOutput)).toContain("tool name conflicts with core memory tool: memory_write");
 			} finally {
 				session.dispose();
 			}
@@ -491,6 +541,9 @@ describe("finance memory namespace", () => {
 			)) as { systemPrompt?: string } | undefined;
 
 			expect(output?.systemPrompt).toContain("FINANCE AGENT MODE");
+			expect(output?.systemPrompt).toContain("memory_session_search");
+			expect(output?.systemPrompt).toContain("memory_promote_session");
+			expect(output?.systemPrompt).toContain("instead of copying raw session text");
 			expect(output?.systemPrompt).not.toContain("CORE MEMORY CONTEXT");
 		});
 	});

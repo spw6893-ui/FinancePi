@@ -1,8 +1,16 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Type } from "typebox";
+import { CONFIG_DIR_NAME } from "../../config.ts";
 import { defineTool, type ExtensionContext } from "../extensions/types.ts";
-import type { MemoryProvider, MemoryProviderError } from "./memory-provider.ts";
+import { getDefaultSessionDir } from "../session-manager.ts";
+import type {
+	MemoryProvider,
+	MemoryProviderError,
+	MemoryProviderTool,
+	MemoryProviderToolCallContext,
+} from "./memory-provider.ts";
 import { scanMemoryReportContent } from "./memory-security.ts";
 import { type MemorySessionSearchResult, searchSessionMemory } from "./memory-session-search.ts";
 import { MemoryStore } from "./memory-store.ts";
@@ -24,6 +32,8 @@ const layerParam = {
 	),
 };
 
+const MAX_MEMORY_ERROR_CURRENT_ENTRIES_CHARS = 1000;
+
 function slugify(value: string): string {
 	return (
 		value
@@ -44,6 +54,67 @@ function assertProjectRelativePath(cwd: string, path: string): string {
 	const rel = relative(resolve(cwd), absolute);
 	if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("Research source path escapes project root.");
 	return path;
+}
+
+async function validateResearchSourcePath(cwd: string, path: string): Promise<string> {
+	const projectRelativePath = assertProjectRelativePath(cwd, path);
+	let sourceStat: Stats;
+	try {
+		sourceStat = await stat(resolve(cwd, projectRelativePath));
+	} catch {
+		throw new Error(`Research source path does not exist: ${projectRelativePath}`);
+	}
+	if (!sourceStat.isFile()) {
+		throw new Error(`Research source path must be a file: ${projectRelativePath}`);
+	}
+	return projectRelativePath;
+}
+
+async function validateSessionSourcePath(cwd: string, path: string, line: number): Promise<string> {
+	const resolvedCwd = resolve(cwd);
+	const absolutePath = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
+	const projectRelativePath = relative(resolvedCwd, absolutePath);
+	let sourceStat: Stats;
+	try {
+		sourceStat = await stat(absolutePath);
+	} catch {
+		throw new Error(`session source path does not exist: ${projectRelativePath}`);
+	}
+	if (!sourceStat.isFile()) {
+		throw new Error(`session source path must be a file: ${projectRelativePath}`);
+	}
+	const projectSessionRoot = resolve(cwd, CONFIG_DIR_NAME, "agent", "sessions");
+	const defaultSessionRoot = resolve(getDefaultSessionDir(cwd));
+	if (!pathIsInside(projectSessionRoot, absolutePath) && !pathIsInside(defaultSessionRoot, absolutePath)) {
+		throw new Error(
+			`session source path must be under ${CONFIG_DIR_NAME}/agent/sessions or the configured Pi session directory: ${projectRelativePath}`,
+		);
+	}
+	if (!projectRelativePath.endsWith(".jsonl")) {
+		throw new Error(`session source path must be a .jsonl file: ${projectRelativePath}`);
+	}
+	const sourceLine = Math.max(1, Math.floor(line));
+	const content = await readFile(absolutePath, "utf8");
+	const lines = content.split(/\r?\n/);
+	const rawLine = lines[sourceLine - 1];
+	if (rawLine === undefined || rawLine.trim().length === 0) {
+		throw new Error(`session source line does not exist: ${projectRelativePath}:${sourceLine}`);
+	}
+	let entry: { type?: unknown; message?: { role?: unknown } };
+	try {
+		entry = JSON.parse(rawLine) as { type?: unknown; message?: { role?: unknown } };
+	} catch {
+		throw new Error(`session source line is not valid json: ${projectRelativePath}:${sourceLine}`);
+	}
+	if (entry.type !== "message" || (entry.message?.role !== "user" && entry.message?.role !== "assistant")) {
+		throw new Error(`session source line is not a user/assistant message: ${projectRelativePath}:${sourceLine}`);
+	}
+	return projectRelativePath;
+}
+
+function pathIsInside(root: string, path: string): boolean {
+	const rel = relative(resolve(root), resolve(path));
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 function buildResearchReportPath(title: string): string {
@@ -77,7 +148,7 @@ function formatAudit(result: MemoryAuditResult): string {
 		`memory_audit: namespaces=${result.namespaces} targets=${result.targets} entries=${result.entries} chars=${result.chars}`,
 		...result.targetsDetail.map(
 			(target) =>
-				`${target.namespace}/${target.target} | ${target.relativePath} | layer=${target.layer} | entries=${target.entries} | chars=${target.chars}/${target.charLimit} | usage=${target.usagePct}% | inject=${target.injectPolicy} | risk=${target.risk} | ${target.description}`,
+				`${target.namespace}/${target.target} | ${target.relativePath} | layer=${target.layer} | entries=${target.entries} | chars=${target.chars}/${target.charLimit} | usage=${target.usagePct}% | duplicateEntries=${target.duplicateEntries} | staleEntries=${target.staleEntries} | inject=${target.injectPolicy} | risk=${target.risk} | ${target.description}`,
 		),
 	].join("\n");
 }
@@ -110,6 +181,12 @@ function formatSessionSearch(result: MemorySessionSearchResult): string {
 		);
 	}
 	return lines.join("\n");
+}
+
+function formatCurrentEntriesForError(entries: string[]): string {
+	const compact = entries.join(" | ");
+	if (compact.length <= MAX_MEMORY_ERROR_CURRENT_ENTRIES_CHARS) return compact;
+	return `${compact.slice(0, MAX_MEMORY_ERROR_CURRENT_ENTRIES_CHARS)} [truncated]`;
 }
 
 export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
@@ -171,6 +248,8 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		promptSnippet: "Audit persistent memory health and capacity",
 		promptGuidelines: [
 			"Use memory_audit when you need a compact overview of memory state, capacity pressure, paths, and inject policies.",
+			"If memory_audit reports risk=duplicate_entries, read the target and compact equivalent entries into one curated memory.",
+			"If memory_audit reports risk=stale_market_data, read the target, verify fresh tools or artifacts, and compact or replace the stale entry with a timestamped summary.",
 		],
 		parameters: Type.Object({
 			...namespaceParam,
@@ -244,7 +323,9 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 				: [
 						`memory_write: error namespace=${result.namespace} target=${result.target} usage=${result.usage} entries=${result.entryCount}`,
 						`error=${result.error}`,
-						result.currentEntries?.length ? `currentEntries=${result.currentEntries.join(" | ")}` : "",
+						result.currentEntries?.length
+							? `currentEntries=${formatCurrentEntriesForError(result.currentEntries)}`
+							: "",
 					]
 						.filter(Boolean)
 						.join("\n");
@@ -316,6 +397,63 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
+	const sessionPromoteTool = defineTool({
+		name: "memory_promote_session",
+		label: "Memory Promote Session",
+		description:
+			"Promote a compact, durable conclusion from a prior session search result into persistent curated memory with explicit session source evidence.",
+		promptSnippet: "Promote prior session evidence into curated memory",
+		promptGuidelines: [
+			"Use memory_promote_session only after memory_session_search found prior session evidence worth preserving.",
+			"Promote compact durable preferences, thesis notes, watchlist items, or workflow lessons; do not promote raw session dumps.",
+			"Treat promoted market-sensitive conclusions as historical; include asOf or createdAt and verify current facts before reuse.",
+		],
+		parameters: Type.Object({
+			namespace: Type.String({ description: "Memory namespace, for example finance." }),
+			target: Type.String({ description: "Memory target inside the namespace." }),
+			content: Type.String({
+				description: "Compact curated memory entry to write. Include asOf or createdAt for market-sensitive notes.",
+			}),
+			sourceSessionPath: Type.String({
+				description: "Project-relative .pi/agent/sessions/*.jsonl path returned by memory_session_search.",
+			}),
+			sourceLine: Type.Number({ description: "Line number from memory_session_search output." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			let sourceSessionPath: string;
+			const sourceLine = Math.max(1, Math.floor(params.sourceLine));
+			try {
+				sourceSessionPath = await validateSessionSourcePath(ctx.cwd, params.sourceSessionPath, sourceLine);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					content: [{ type: "text" as const, text: `memory_promote_session: error ${message}` }],
+					details: { error: message },
+					isError: true,
+				};
+			}
+			const sourceSession = `${sourceSessionPath}:${sourceLine}`;
+			const result = await createStore(ctx, namespaces).write({
+				namespace: params.namespace,
+				target: params.target,
+				action: "add",
+				content: `${params.content.trim()} | sourceSession=${sourceSession}`,
+			});
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: result.success
+							? `memory_promote_session: success namespace=${result.namespace} target=${result.target} sourceSession=${sourceSession} usage=${result.usage} entries=${result.entryCount} message=${result.message}`
+							: `memory_promote_session: error namespace=${result.namespace} target=${result.target} sourceSession=${sourceSession} error=${result.error}`,
+					},
+				],
+				details: { sourceSession, memory: result },
+				isError: !result.success,
+			};
+		},
+	});
+
 	const researchReportTool = defineTool({
 		name: "memory_research_report",
 		label: "Memory Research Report",
@@ -351,7 +489,19 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 					isError: true,
 				};
 			}
-			const sourcePaths = (params.sourcePaths ?? []).map((path) => assertProjectRelativePath(ctx.cwd, path));
+			let sourcePaths: string[];
+			try {
+				sourcePaths = await Promise.all(
+					(params.sourcePaths ?? []).map((path) => validateResearchSourcePath(ctx.cwd, path)),
+				);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					content: [{ type: "text" as const, text: `memory_research_report: error ${message}` }],
+					details: { error: message },
+					isError: true,
+				};
+			}
 			const reportPath = buildResearchReportPath(params.title);
 			const indexEntry = [
 				params.summary.trim(),
@@ -405,7 +555,17 @@ export function createMemoryTools(namespaces: MemoryNamespaceConfig[]) {
 		},
 	});
 
-	return [listTool, readTool, searchTool, writeTool, compactTool, sessionSearchTool, researchReportTool, auditTool];
+	return [
+		listTool,
+		readTool,
+		searchTool,
+		writeTool,
+		compactTool,
+		sessionSearchTool,
+		sessionPromoteTool,
+		researchReportTool,
+		auditTool,
+	];
 }
 
 function formatProviderToolResult(result: unknown): string {
@@ -417,62 +577,88 @@ function formatProviderToolResult(result: unknown): string {
 export function createMemoryProviderTools(
 	providers: MemoryProvider[],
 	options: {
+		context?: MemoryProviderToolCallContext;
 		onProviderError?: (provider: MemoryProvider, phase: MemoryProviderError["phase"], error: unknown) => void;
+		reservedToolNames?: Set<string>;
 	} = {},
 ) {
+	const registeredProviderToolNames = new Set<string>();
 	return providers.flatMap((provider) => {
-		let providerTools = [];
+		let providerTools: MemoryProviderTool[] = [];
 		try {
 			providerTools = provider.getToolDefinitions?.() ?? [];
 		} catch (error) {
 			options.onProviderError?.(provider, "getToolDefinitions", error);
 			return [];
 		}
-		return providerTools.map((providerTool) =>
-			defineTool({
-				name: providerTool.name,
-				label: providerTool.name,
-				description: providerTool.description,
-				promptSnippet: providerTool.description,
-				promptGuidelines: [
-					"Treat external memory provider tool results as historical/background context, not current market data.",
-				],
-				parameters: providerTool.parameters,
-				async execute(_toolCallId, params) {
-					if (!provider.handleToolCall) {
-						return {
-							content: [
-								{
-									type: "text" as const,
-									text: `memory provider tool error: provider ${provider.name} cannot handle ${providerTool.name}`,
-								},
-							],
-							details: undefined,
-							isError: true,
-						};
-					}
-					try {
-						const result = await provider.handleToolCall(providerTool.name, params);
-						return {
-							content: [{ type: "text" as const, text: formatProviderToolResult(result) }],
-							details: result,
-						};
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						options.onProviderError?.(provider, "handleToolCall", error);
-						return {
-							content: [
-								{
-									type: "text" as const,
-									text: `memory provider tool error: provider=${provider.name} tool=${providerTool.name} error=${message}`,
-								},
-							],
-							details: { provider: provider.name, tool: providerTool.name, error: message },
-							isError: true,
-						};
-					}
-				},
-			}),
-		);
+		return providerTools.flatMap((providerTool) => {
+			if (options.reservedToolNames?.has(providerTool.name)) {
+				options.onProviderError?.(
+					provider,
+					"toolRegistration",
+					new Error(`tool name conflicts with core memory tool: ${providerTool.name}`),
+				);
+				return [];
+			}
+			if (registeredProviderToolNames.has(providerTool.name)) {
+				options.onProviderError?.(
+					provider,
+					"toolRegistration",
+					new Error(`tool name conflicts with another memory provider tool: ${providerTool.name}`),
+				);
+				return [];
+			}
+			registeredProviderToolNames.add(providerTool.name);
+			return [
+				defineTool({
+					name: providerTool.name,
+					label: providerTool.name,
+					description: providerTool.description,
+					promptSnippet: providerTool.description,
+					promptGuidelines: [
+						"Treat external memory provider tool results as historical/background context, not current market data.",
+					],
+					parameters: providerTool.parameters,
+					async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+						if (!provider.handleToolCall) {
+							return {
+								content: [
+									{
+										type: "text" as const,
+										text: `memory provider tool error: provider ${provider.name} cannot handle ${providerTool.name}`,
+									},
+								],
+								details: undefined,
+								isError: true,
+							};
+						}
+						try {
+							const result = await provider.handleToolCall(providerTool.name, params, {
+								cwd: ctx.cwd,
+								sessionId: options.context?.sessionId ?? ctx.sessionManager.getSessionId(),
+								namespace: options.context?.namespace,
+							});
+							return {
+								content: [{ type: "text" as const, text: formatProviderToolResult(result) }],
+								details: result,
+							};
+						} catch (error) {
+							const message = error instanceof Error ? error.message : String(error);
+							options.onProviderError?.(provider, "handleToolCall", error);
+							return {
+								content: [
+									{
+										type: "text" as const,
+										text: `memory provider tool error: provider=${provider.name} tool=${providerTool.name} error=${message}`,
+									},
+								],
+								details: { provider: provider.name, tool: providerTool.name, error: message },
+								isError: true,
+							};
+						}
+					},
+				}),
+			];
+		});
 	});
 }

@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 
 import { MemoryManager } from "../../src/core/memory/memory-manager.ts";
@@ -64,6 +65,7 @@ describe("MemoryManager", () => {
 				"memory_write",
 				"memory_compact",
 				"memory_session_search",
+				"memory_promote_session",
 				"memory_research_report",
 				"memory_audit",
 				"memory_provider_audit",
@@ -131,6 +133,41 @@ describe("MemoryManager", () => {
 				"end:s1",
 				"shutdown",
 			]);
+		});
+	});
+
+	it("automatically passes the single active namespace to provider lifecycle hooks", async () => {
+		await withTempCwd(async (cwd) => {
+			const namespaces: string[] = [];
+			const provider: MemoryProvider = {
+				name: "single-namespace-provider",
+				isAvailable: () => true,
+				initialize: async (ctx) => {
+					namespaces.push(`init:${ctx.namespace ?? "none"}`);
+				},
+				prefetch: async (_query, ctx) => {
+					namespaces.push(`prefetch:${ctx.namespace ?? "none"}`);
+					return "";
+				},
+				syncTurn: async (_turn, ctx) => {
+					namespaces.push(`sync:${ctx.namespace ?? "none"}`);
+				},
+				onSessionEnd: async (_messages, ctx) => {
+					namespaces.push(`end:${ctx.namespace ?? "none"}`);
+				},
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [provider],
+			});
+
+			await manager.initializeProviders({ sessionId: "s1" });
+			await manager.prefetch("NVDA");
+			await manager.syncTurn({ user: "u", assistant: "a" });
+			await manager.onSessionEnd([]);
+
+			expect(namespaces).toEqual(["init:finance", "prefetch:finance", "sync:finance", "end:finance"]);
 		});
 	});
 
@@ -252,6 +289,127 @@ describe("MemoryManager", () => {
 			expect(output).toContain("configured=failing,healthy,unavailable");
 			expect(output).toContain("available=healthy");
 			expect(output).toContain("error provider=failing phase=initialize message=init failed");
+		});
+	});
+
+	it("does not duplicate provider tool registration errors across repeated tool creation", async () => {
+		await withTempCwd(async (cwd) => {
+			const provider: MemoryProvider = {
+				name: "colliding",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_write",
+						description: "Provider collision.",
+						parameters: Type.Object({}),
+					},
+				],
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [provider],
+			});
+
+			await manager.initializeProviders();
+			manager.createProviderTools();
+			manager.createProviderTools();
+
+			expect(manager.getProviderErrors()).toEqual([
+				{
+					provider: "colliding",
+					phase: "toolRegistration",
+					message: "tool name conflicts with core memory tool: memory_write",
+				},
+			]);
+		});
+	});
+
+	it("skips duplicate tool names from later memory providers", async () => {
+		await withTempCwd(async (cwd) => {
+			const first: MemoryProvider = {
+				name: "first",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_external_lookup",
+						description: "First provider lookup.",
+						parameters: Type.Object({}),
+					},
+				],
+			};
+			const second: MemoryProvider = {
+				name: "second",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_external_lookup",
+						description: "Second provider duplicate lookup.",
+						parameters: Type.Object({}),
+					},
+				],
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [first, second],
+			});
+
+			await manager.initializeProviders();
+			const tools = manager.createProviderTools();
+
+			expect(tools.map((tool) => tool.name)).toEqual(["memory_external_lookup"]);
+			expect(manager.getProviderErrors()).toEqual([
+				{
+					provider: "second",
+					phase: "toolRegistration",
+					message: "tool name conflicts with another memory provider tool: memory_external_lookup",
+				},
+			]);
+		});
+	});
+
+	it("passes project and namespace context into provider-owned memory tools", async () => {
+		await withTempCwd(async (cwd) => {
+			let toolContext = "";
+			const provider: MemoryProvider = {
+				name: "contextual-provider",
+				isAvailable: () => true,
+				initialize: async () => {},
+				getToolDefinitions: () => [
+					{
+						name: "memory_external_context",
+						description: "Read provider tool context.",
+						parameters: Type.Object({}),
+					},
+				],
+				handleToolCall: async (_toolName, _args, ctx) => {
+					toolContext = `${ctx.cwd}:${ctx.namespace ?? "none"}:${ctx.sessionId ?? "none"}`;
+					return toolContext;
+				},
+			};
+			const manager = new MemoryManager({
+				cwd,
+				namespaces: [namespace("finance")],
+				providers: [provider],
+			});
+
+			await manager.initializeProviders({ sessionId: "s1", namespace: "finance" });
+			const tool = manager.createProviderTools().find((item) => item.name === "memory_external_context");
+			const result = await tool?.execute("context", {}, undefined, undefined, {
+				cwd,
+				sessionManager: { getSessionId: () => "s1" },
+			} as never);
+			const output = result?.content
+				?.filter((item) => item.type === "text")
+				.map((item) => item.text)
+				.join("\n");
+
+			expect(toolContext).toBe(`${cwd}:finance:s1`);
+			expect(output).toContain(`${cwd}:finance:s1`);
 		});
 	});
 });

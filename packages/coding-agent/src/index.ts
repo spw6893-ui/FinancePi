@@ -170,6 +170,7 @@ export type {
 	MemoryProvider,
 	MemoryProviderInitContext,
 	MemoryProviderTool,
+	MemoryProviderToolCallContext,
 	MemoryRecallContext,
 	MemorySessionContext,
 	MemorySyncContext,
@@ -184,6 +185,9 @@ export {
 export { MEMORY_ENTRY_DELIMITER, MemoryStore } from "./core/memory/memory-store.ts";
 export { createMemoryTools } from "./core/memory/memory-tools.ts";
 export type {
+	MemoryAuditResult,
+	MemoryAuditTarget,
+	MemoryCompactResult,
 	MemoryEntryOperation,
 	MemoryInjectPolicy,
 	MemoryLayer,

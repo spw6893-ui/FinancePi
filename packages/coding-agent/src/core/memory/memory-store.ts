@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { scanMemoryContent, validateMemoryEntryMetadata } from "./memory-security.ts";
+import {
+	extractMemoryEntryTimestamp,
+	memoryEntryRequiresTimestamp,
+	scanMemoryContent,
+	validateMemoryEntryMetadata,
+} from "./memory-security.ts";
 import type {
 	MemoryAuditResult,
 	MemoryCompactResult,
@@ -17,6 +22,7 @@ import type {
 } from "./memory-types.ts";
 
 export const MEMORY_ENTRY_DELIMITER = "\n§\n";
+const STALE_MARKET_MEMORY_DAYS = 180;
 
 interface MemoryStoreOptions {
 	cwd: string;
@@ -30,12 +36,26 @@ interface ResolvedTarget {
 	relativePath: string;
 }
 
+interface SearchRecord {
+	text: string;
+	line: number;
+	contextBefore: Array<{ line: number; text: string }>;
+	contextAfter: Array<{ line: number; text: string }>;
+}
+
 function normalizeTargetName(value: string): string {
 	return value.trim();
 }
 
 function charsForEntries(entries: string[]): number {
 	return entries.length === 0 ? 0 : entries.join(MEMORY_ENTRY_DELIMITER).length;
+}
+
+function normalizedEntryIdentity(value: string): string {
+	return value
+		.replace(/\s+/g, " ")
+		.replace(/([\u3400-\u9fff])\s+([\u3400-\u9fff])/g, "$1$2")
+		.trim();
 }
 
 function usageText(chars: number, limit: number): string {
@@ -45,6 +65,32 @@ function usageText(chars: number, limit: number): string {
 
 function usagePct(chars: number, limit: number): number {
 	return limit > 0 ? Math.min(100, Math.floor((chars / limit) * 100)) : 0;
+}
+
+function countDuplicateEntryIdentities(entries: string[]): number {
+	const identities = new Set<string>();
+	let duplicateEntries = 0;
+	for (const entry of entries) {
+		const identity = normalizedEntryIdentity(entry);
+		if (identities.has(identity)) {
+			duplicateEntries++;
+			continue;
+		}
+		identities.add(identity);
+	}
+	return duplicateEntries;
+}
+
+function countStaleMarketEntries(entries: string[], target: Pick<MemoryTargetConfig, "layer">, now: Date): number {
+	const staleThresholdMs = STALE_MARKET_MEMORY_DAYS * 24 * 60 * 60 * 1000;
+	let staleEntries = 0;
+	for (const entry of entries) {
+		if (!memoryEntryRequiresTimestamp(entry, target)) continue;
+		const timestamp = extractMemoryEntryTimestamp(entry);
+		if (!timestamp) continue;
+		if (now.getTime() - timestamp.getTime() > staleThresholdMs) staleEntries++;
+	}
+	return staleEntries;
 }
 
 function queryTerms(query: string, ignoreCase: boolean): string[] {
@@ -83,6 +129,36 @@ function buildSearchSnippet(text: string, terms: string[], ignoreCase: boolean):
 	return `${start > 0 ? "..." : ""}${normalizedText.slice(start, end)}${end < normalizedText.length ? "..." : ""}`;
 }
 
+function buildSearchRecords(content: string, context: number): SearchRecord[] {
+	const lines = content ? content.split(/\r?\n/) : [];
+	if (!content.includes(MEMORY_ENTRY_DELIMITER)) {
+		return lines.map((text, index) => ({
+			text,
+			line: index + 1,
+			contextBefore: lines
+				.slice(Math.max(0, index - context), index)
+				.map((lineText, offset) => ({ line: Math.max(0, index - context) + offset + 1, text: lineText })),
+			contextAfter: lines
+				.slice(index + 1, index + 1 + context)
+				.map((lineText, offset) => ({ line: index + offset + 2, text: lineText })),
+		}));
+	}
+
+	const records: SearchRecord[] = [];
+	let currentLine = 1;
+	for (const entry of content.split(MEMORY_ENTRY_DELIMITER)) {
+		const entryLines = entry ? entry.split(/\r?\n/) : [];
+		records.push({
+			text: entry,
+			line: currentLine,
+			contextBefore: [],
+			contextAfter: [],
+		});
+		currentLine += entryLines.length + 1;
+	}
+	return records;
+}
+
 export class MemoryStore {
 	private readonly cwd: string;
 	private readonly namespaces = new Map<string, MemoryNamespaceConfig>();
@@ -106,8 +182,9 @@ export class MemoryStore {
 		return { entries };
 	}
 
-	audit(options: { namespace?: string; target?: string; layer?: string } = {}): MemoryAuditResult {
+	audit(options: { namespace?: string; target?: string; layer?: string; now?: Date } = {}): MemoryAuditResult {
 		const states = this.list(options).entries;
+		const now = options.now ?? new Date();
 		return {
 			namespaces: new Set(states.map((state) => state.namespace)).size,
 			targets: states.length,
@@ -115,6 +192,8 @@ export class MemoryStore {
 			chars: states.reduce((sum, state) => sum + state.chars, 0),
 			targetsDetail: states.map((state) => {
 				const pct = usagePct(state.chars, state.charLimit);
+				const duplicateEntries = countDuplicateEntryIdentities(state.entries);
+				const staleEntries = countStaleMarketEntries(state.entries, state, now);
 				return {
 					namespace: state.namespace,
 					target: state.target,
@@ -124,15 +203,21 @@ export class MemoryStore {
 					chars: state.chars,
 					charLimit: state.charLimit,
 					usagePct: pct,
+					duplicateEntries,
+					staleEntries,
 					injectPolicy: state.injectPolicy,
 					risk:
 						state.chars > state.charLimit
 							? "over_limit"
-							: pct >= 80
-								? "near_limit"
-								: state.entries.length === 0
-									? "empty"
-									: "ok",
+							: duplicateEntries > 0
+								? "duplicate_entries"
+								: staleEntries > 0
+									? "stale_market_data"
+									: pct >= 80
+										? "near_limit"
+										: state.entries.length === 0
+											? "empty"
+											: "ok",
 					description: state.description,
 				};
 			}),
@@ -188,26 +273,20 @@ export class MemoryStore {
 				if (options.layer && target.layer !== options.layer) continue;
 				const resolved = this.resolveTarget(namespace.namespace, target.target);
 				const content = await this.readRawFile(resolved.absolutePath);
-				const lines = content ? content.split(/\r?\n/) : [];
-				for (let index = 0; index < lines.length; index++) {
-					const line = lines[index];
-					const score = pattern ? (pattern.test(line) ? 1 : 0) : scoreTerms(line, terms, ignoreCase);
+				for (const record of buildSearchRecords(content, context)) {
+					const score = pattern ? (pattern.test(record.text) ? 1 : 0) : scoreTerms(record.text, terms, ignoreCase);
 					if (score <= 0) continue;
 					if (pattern) pattern.lastIndex = 0;
 					matches.push({
 						namespace: namespace.namespace,
 						target: target.target,
 						relativePath: resolved.relativePath,
-						line: index + 1,
-						text: line,
-						snippet: buildSearchSnippet(line, pattern ? [query] : terms, ignoreCase),
+						line: record.line,
+						text: record.text,
+						snippet: buildSearchSnippet(record.text, pattern ? [query] : terms, ignoreCase),
 						score,
-						contextBefore: lines
-							.slice(Math.max(0, index - context), index)
-							.map((text, offset) => ({ line: Math.max(0, index - context) + offset + 1, text })),
-						contextAfter: lines
-							.slice(index + 1, index + 1 + context)
-							.map((text, offset) => ({ line: index + offset + 2, text })),
+						contextBefore: record.contextBefore,
+						contextAfter: record.contextAfter,
 					});
 				}
 			}
@@ -245,12 +324,19 @@ export class MemoryStore {
 
 		const entries = await this.readEntries(resolved.absolutePath);
 		const working = [...entries];
+		let skippedDuplicates = 0;
+		let mergedDuplicates = 0;
 		for (const [index, operation] of operations.entries()) {
 			const label = `Operation ${index + 1} (${operation.action})`;
 			if (operation.action === "add") {
 				const content = operation.content?.trim();
 				if (!content) return this.writeError(resolved, `${label}: content is required.`, entries);
-				if (!working.includes(content)) working.push(content);
+				const contentIdentity = normalizedEntryIdentity(content);
+				if (working.some((entry) => normalizedEntryIdentity(entry) === contentIdentity)) {
+					skippedDuplicates++;
+				} else {
+					working.push(content);
+				}
 				continue;
 			}
 			const oldText = operation.oldText?.trim();
@@ -268,7 +354,16 @@ export class MemoryStore {
 			if (operation.action === "replace") {
 				const content = operation.content?.trim();
 				if (!content) return this.writeError(resolved, `${label}: content is required.`, entries);
-				working[matches[0].i] = content;
+				const contentIdentity = normalizedEntryIdentity(content);
+				const duplicate = working.findIndex(
+					(entry, i) => i !== matches[0].i && normalizedEntryIdentity(entry) === contentIdentity,
+				);
+				if (duplicate >= 0) {
+					working.splice(matches[0].i, 1);
+					mergedDuplicates++;
+				} else {
+					working[matches[0].i] = content;
+				}
 				continue;
 			}
 			return this.writeError(resolved, `${label}: unknown action.`, entries);
@@ -288,7 +383,13 @@ export class MemoryStore {
 			done: true,
 			namespace: resolved.config.namespace,
 			target: resolved.target.target,
-			message: `Applied ${operations.length} operation(s).`,
+			message: [
+				`Applied ${operations.length} operation(s).`,
+				skippedDuplicates > 0 ? `skippedDuplicates=${skippedDuplicates}` : "",
+				mergedDuplicates > 0 ? `mergedDuplicates=${mergedDuplicates}` : "",
+			]
+				.filter(Boolean)
+				.join(" "),
 			usage: usageText(chars, resolved.target.charLimit),
 			entryCount: working.length,
 		};
@@ -419,14 +520,10 @@ export class MemoryStore {
 
 	private parseEntries(raw: string): string[] {
 		if (!raw.trim()) return [];
-		return [
-			...new Set(
-				raw
-					.split(MEMORY_ENTRY_DELIMITER)
-					.map((entry) => entry.trim())
-					.filter(Boolean),
-			),
-		];
+		return raw
+			.split(MEMORY_ENTRY_DELIMITER)
+			.map((entry) => entry.trim())
+			.filter(Boolean);
 	}
 
 	private async writeEntries(path: string, entries: string[]): Promise<void> {

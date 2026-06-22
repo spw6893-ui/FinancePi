@@ -28,6 +28,7 @@ export class MemoryManager {
 	private availableProviders: MemoryProvider[] | undefined;
 	private readonly store: MemoryStore;
 	private readonly providerErrors: MemoryProviderError[] = [];
+	private providerContext: Omit<MemoryProviderInitContext, "cwd"> = {};
 
 	constructor(options: MemoryManagerOptions) {
 		this.cwd = options.cwd;
@@ -38,6 +39,10 @@ export class MemoryManager {
 
 	hasNamespaces(): boolean {
 		return this.namespaces.length > 0;
+	}
+
+	hasProviders(): boolean {
+		return this.providers.length > 0;
 	}
 
 	getNamespaces(): MemoryNamespaceConfig[] {
@@ -52,8 +57,14 @@ export class MemoryManager {
 		return [...createMemoryTools(this.namespaces), this.createProviderAuditTool()];
 	}
 
+	createProviderAuditTools() {
+		return [this.createProviderAuditTool()];
+	}
+
 	createProviderTools() {
 		return createMemoryProviderTools(this.getAvailableProviders(), {
+			context: { cwd: this.cwd, ...this.providerContext },
+			reservedToolNames: new Set(this.createTools().map((tool) => tool.name)),
 			onProviderError: (provider, phase, error) => this.recordProviderError(provider, phase, error),
 		});
 	}
@@ -71,6 +82,7 @@ export class MemoryManager {
 	}
 
 	async initializeProviders(ctx: Omit<MemoryProviderInitContext, "cwd"> = {}): Promise<void> {
+		this.providerContext = this.withDefaultNamespace(ctx);
 		const available: MemoryProvider[] = [];
 		for (const provider of this.providers) {
 			let isAvailable = false;
@@ -82,7 +94,7 @@ export class MemoryManager {
 			}
 			if (!isAvailable) continue;
 			try {
-				await provider.initialize({ cwd: this.cwd, ...ctx });
+				await provider.initialize({ cwd: this.cwd, ...this.providerContext });
 			} catch (error) {
 				this.recordProviderError(provider, "initialize", error);
 				continue;
@@ -107,10 +119,11 @@ export class MemoryManager {
 	}
 
 	async prefetch(query: string, ctx: Omit<MemoryRecallContext, "cwd"> = {}): Promise<string> {
+		const providerCtx = this.withDefaultNamespace(ctx);
 		const recalls = await Promise.all(
 			this.getAvailableProviders().map(async (provider) => {
 				try {
-					return await provider.prefetch?.(query, { cwd: this.cwd, ...ctx });
+					return await provider.prefetch?.(query, { cwd: this.cwd, ...providerCtx });
 				} catch (error) {
 					this.recordProviderError(provider, "prefetch", error);
 					return undefined;
@@ -121,10 +134,11 @@ export class MemoryManager {
 	}
 
 	async syncTurn(turn: MemoryTurn, ctx: Omit<MemorySyncContext, "cwd"> = {}): Promise<void> {
+		const providerCtx = this.withDefaultNamespace(ctx);
 		await Promise.all(
 			this.getAvailableProviders().map(async (provider) => {
 				try {
-					await provider.syncTurn?.(turn, { cwd: this.cwd, ...ctx });
+					await provider.syncTurn?.(turn, { cwd: this.cwd, ...providerCtx });
 				} catch (error) {
 					this.recordProviderError(provider, "syncTurn", error);
 				}
@@ -133,10 +147,11 @@ export class MemoryManager {
 	}
 
 	async onSessionEnd(messages: AgentMessage[], ctx: Omit<MemorySessionContext, "cwd"> = {}): Promise<void> {
+		const providerCtx = this.withDefaultNamespace(ctx);
 		await Promise.all(
 			this.getAvailableProviders().map(async (provider) => {
 				try {
-					await provider.onSessionEnd?.(messages, { cwd: this.cwd, ...ctx });
+					await provider.onSessionEnd?.(messages, { cwd: this.cwd, ...providerCtx });
 				} catch (error) {
 					this.recordProviderError(provider, "onSessionEnd", error);
 				}
@@ -156,12 +171,28 @@ export class MemoryManager {
 		);
 	}
 
+	private withDefaultNamespace<T extends { namespace?: string }>(ctx: T): T {
+		if (ctx.namespace || this.namespaces.length !== 1) return { ...ctx };
+		return { ...ctx, namespace: this.namespaces[0].namespace };
+	}
+
 	private recordProviderError(provider: MemoryProvider, phase: MemoryProviderError["phase"], error: unknown): void {
-		this.providerErrors.push({
+		const entry = {
 			provider: provider.name,
 			phase,
 			message: error instanceof Error ? error.message : String(error),
-		});
+		};
+		if (
+			this.providerErrors.some(
+				(existing) =>
+					existing.provider === entry.provider &&
+					existing.phase === entry.phase &&
+					existing.message === entry.message,
+			)
+		) {
+			return;
+		}
+		this.providerErrors.push(entry);
 	}
 
 	private createProviderAuditTool() {

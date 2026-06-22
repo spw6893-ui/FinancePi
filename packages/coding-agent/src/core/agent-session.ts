@@ -699,7 +699,10 @@ export class AgentSession {
 		const user = this._findPreviousUserMessageText(message);
 		if (!user) return;
 		try {
-			await this._getMemoryManager().syncTurn({ user, assistant }, { sessionId: this.sessionId });
+			await this._getMemoryManager().syncTurn(
+				{ user, assistant },
+				{ sessionId: this.sessionId, namespace: this._getMemoryProviderNamespace() },
+			);
 		} catch (error) {
 			this._extensionRunner.emitError({
 				extensionPath: "<core:memory>",
@@ -711,7 +714,9 @@ export class AgentSession {
 
 	private async _buildMemoryProviderPrefetchBlock(query: string): Promise<string> {
 		try {
-			const recall = await this._getMemoryManager().prefetch(query);
+			const recall = await this._getMemoryManager().prefetch(query, {
+				namespace: this._getMemoryProviderNamespace(),
+			});
 			if (!recall.trim()) return "";
 			const compactRecall =
 				recall.length > 1500
@@ -894,7 +899,7 @@ export class AgentSession {
 		);
 		this._disconnectFromAgent();
 		if (!this._memoryProvidersClosed) {
-			void this._memoryManager?.shutdownProviders().catch(() => {});
+			void this.closeMemoryProviders().catch(() => {});
 			this._memoryProvidersClosed = true;
 		}
 		this._eventListeners = [];
@@ -905,7 +910,10 @@ export class AgentSession {
 		const manager = this._memoryManager;
 		if (!manager || this._memoryProvidersClosed) return;
 		try {
-			await manager.onSessionEnd(this.messages, { sessionId: this.sessionId });
+			await manager.onSessionEnd(this.messages, {
+				sessionId: this.sessionId,
+				namespace: this._getMemoryProviderNamespace(),
+			});
 		} catch (error) {
 			this._extensionRunner.emitError({
 				extensionPath: "<core:memory>",
@@ -1096,6 +1104,11 @@ export class AgentSession {
 			}
 		}
 		return [...providers.values()];
+	}
+
+	private _getMemoryProviderNamespace(): string | undefined {
+		const namespaces = this._getMemoryNamespaces();
+		return namespaces.length === 1 ? namespaces[0]?.namespace : undefined;
 	}
 
 	private _getMemoryManager(): MemoryManager {
@@ -2319,7 +2332,10 @@ export class AgentSession {
 		await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
 		this._memoryManager = undefined;
 		const memoryManager = this._getMemoryManager();
-		await memoryManager.initializeProviders({ sessionId: this.sessionId });
+		await memoryManager.initializeProviders({
+			sessionId: this.sessionId,
+			namespace: this._getMemoryProviderNamespace(),
+		});
 		this._memoryProviderSystemPromptBlock = await memoryManager.buildProviderSystemPromptBlock();
 		this._refreshToolRegistry();
 		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
@@ -2532,7 +2548,12 @@ export class AgentSession {
 					definition,
 					sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
 				}))
-			: [];
+			: memoryManager.hasProviders()
+				? memoryManager.createProviderAuditTools().map((definition) => ({
+						definition,
+						sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
+					}))
+				: [];
 		const memoryProviderTools = memoryManager.createProviderTools().map((definition) => ({
 			definition,
 			sourceInfo: createSyntheticSourceInfo(`<core:${definition.name}>`, { source: "builtin" }),
