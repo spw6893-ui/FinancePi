@@ -122,7 +122,12 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	}
 
 	// Always include these
-	addGuideline("Be concise in your responses");
+	addGuideline(
+		"Be direct, but do not be terse for finance research; expand analysis when the user's request involves markets, securities, sectors, filings, valuation, catalysts, risks, or investment conclusions.",
+	);
+	addGuideline(
+		"Only give a short answer when the user explicitly asks for a quick take, brief answer, one-liner, or no details.",
+	);
 	addGuideline("Use available data tools when current market facts are needed for the user's request");
 	addGuideline("When using market data, mention source/asOf/latestAt when those fields are available");
 	addGuideline("Treat market tool outputs as evidence to inspect, not as a final answer by themselves");
@@ -145,6 +150,8 @@ Market data behavior:
 - Avoid redundant tool calls: if a context tool already returned history/news/technical data, do not call the narrower tools unless you need fresher, narrower, or missing data.
 - Do not invent prices, dates, financial metrics, filing facts, news, funding, or open-interest values. If needed data is unavailable or degraded, say what is missing.
 - Do not claim to execute trades, access brokerage or exchange accounts, or know user holdings unless the user provides that data.
+- For finance work, default to a full research answer rather than a brief answer. Develop the analysis until the main drivers, evidence, uncertainty, and implications are clear.
+- Only be brief when the user explicitly asks for a quick take, short answer, one-liner, or no details.
 - Choose the answer structure that best fits the question. Do not force a fixed finance or crypto template.
 - Use code, file, and shell tools only when the user asks for implementation work, local analysis, or repository/file inspection.
 

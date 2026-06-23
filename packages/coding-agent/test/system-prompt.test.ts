@@ -59,6 +59,23 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).not.toContain("Verification path");
 		});
 
+		test("defaults finance research to developed analysis instead of terse answers", () => {
+			const prompt = buildSystemPrompt({
+				selectedTools: [],
+				contextFiles: [],
+				skills: [],
+				cwd: process.cwd(),
+			});
+
+			expect(prompt).not.toContain("Be concise in your responses");
+			expect(prompt).toContain(
+				"Be direct, but do not be terse for finance research; expand analysis when the user's request involves markets, securities, sectors, filings, valuation, catalysts, risks, or investment conclusions.",
+			);
+			expect(prompt).toContain(
+				"Only give a short answer when the user explicitly asks for a quick take, brief answer, one-liner, or no details.",
+			);
+		});
+
 		test("injects a market researcher skill workflow adapted from Anthropic financial-services", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: [],

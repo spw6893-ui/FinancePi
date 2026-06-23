@@ -42,4 +42,33 @@ describe("finance agent extension", () => {
 			webAgentExtension,
 		]);
 	});
+
+	it("guides finance mode to expand research without imposing a fixed template", async () => {
+		const result = await createTestExtensionsResult([
+			{ factory: coreFinanceAgentExtension, path: "<finance-agent>" },
+		]);
+		const handler = result.extensions[0]?.handlers.get("before_agent_start")?.[0];
+
+		const output = (await handler?.(
+			{
+				type: "before_agent_start",
+				prompt: "analyze NVDA",
+				systemPrompt: "base prompt",
+				systemPromptOptions: {} as never,
+			},
+			{ cwd: process.cwd() } as never,
+		)) as { systemPrompt?: string } | undefined;
+
+		expect(output?.systemPrompt).toContain(
+			"For finance work, default to a full research answer rather than a brief answer.",
+		);
+		expect(output?.systemPrompt).toContain(
+			"Only be brief when the user explicitly asks for a quick take, short answer, one-liner, or no details.",
+		);
+		expect(output?.systemPrompt).toContain(
+			"Do not force a fixed answer template; choose the natural structure for the question.",
+		);
+		expect(output?.systemPrompt).not.toContain("compact skill workflow");
+		expect(output?.systemPrompt).not.toContain("Default output shape");
+	});
 });
