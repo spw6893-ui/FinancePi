@@ -98,6 +98,7 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("finance_mcp_list_tools");
 			expect(prompt).toContain("finance_mcp_call_tool");
 			expect(prompt).toContain("/skill:finance-services");
+			expect(prompt).toContain("/skill:finance-superpowers");
 			expect(prompt).toContain("/sector");
 			expect(prompt).toContain("/comps");
 		});

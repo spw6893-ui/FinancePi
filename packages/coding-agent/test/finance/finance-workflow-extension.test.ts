@@ -17,15 +17,19 @@ describe("finance workflow extension", () => {
 		expect(factories).toContain(financeWorkflowExtension);
 	});
 
-	it("registers plan, grill, and goal commands", async () => {
+	it("registers plan, finance superpowers, grill alias, and goal commands", async () => {
 		const result = await createTestExtensionsResult([{ factory: financeWorkflowExtension, path: "<workflow>" }]);
 		const extension = result.extensions[0];
 
 		expect(extension?.commands.has("plan")).toBe(true);
+		expect(extension?.commands.has("invest")).toBe(true);
+		expect(extension?.commands.has("superpower")).toBe(true);
 		expect(extension?.commands.has("grill")).toBe(true);
 		expect(extension?.commands.has("grill-me")).toBe(true);
 		expect(extension?.commands.has("goal")).toBe(true);
 		expect(extension?.flags.has("plan")).toBe(true);
+		expect(extension?.flags.has("invest")).toBe(true);
+		expect(extension?.flags.has("superpower")).toBe(true);
 		expect(extension?.flags.has("grill")).toBe(true);
 		expect(extension?.tools.has("get_goal")).toBe(true);
 		expect(extension?.tools.has("create_goal")).toBe(true);
@@ -142,30 +146,63 @@ describe("finance workflow extension", () => {
 		]);
 	});
 
-	it("injects grill mode guidance that keeps asking finance due-diligence questions", async () => {
+	it("injects finance superpowers guidance for collaborative investment modeling", async () => {
 		const result = await createTestExtensionsResult([{ factory: financeWorkflowExtension, path: "<workflow>" }]);
 		const extension = result.extensions[0];
-		const grillHandler = extension?.commands.get("grill")?.handler;
+		const investHandler = extension?.commands.get("invest")?.handler;
 		const beforeStart = extension?.handlers.get("before_agent_start")?.[0];
 
-		await grillHandler?.("", {
+		await investHandler?.("", {
 			ui: { notify: () => {}, setStatus: () => {} },
 		} as never);
 		const output = (await beforeStart?.(
 			{
 				type: "before_agent_start",
-				prompt: "我的AI投资框架合理吗",
+				prompt: "我想投资SOXL，应该怎么建模",
 				systemPrompt: "base",
 				systemPromptOptions: {} as never,
 			},
 			{} as never,
 		)) as { systemPrompt?: string } | undefined;
 
-		expect(output?.systemPrompt).toContain("FINANCE GRILL MODE");
-		expect(output?.systemPrompt).toContain("Keep asking");
-		expect(output?.systemPrompt).toContain("one high-leverage question");
-		expect(output?.systemPrompt).toContain("thesis, evidence, valuation, catalysts, risks");
-		expect(output?.systemPrompt).not.toContain("fixed answer template");
+		expect(output?.systemPrompt).toContain("FINANCE SUPERPOWERS MODE");
+		expect(output?.systemPrompt).toContain("co-design the model");
+		expect(output?.systemPrompt).toContain("SOXL");
+		expect(output?.systemPrompt).toContain("daily reset leverage");
+		expect(output?.systemPrompt).toContain("data plan");
+		expect(output?.systemPrompt).toContain("Do not force a fixed output template");
+	});
+
+	it("starts finance superpowers mode with a follow-up when /invest receives an asset", async () => {
+		const result = await createTestExtensionsResult([{ factory: financeWorkflowExtension, path: "<workflow>" }]);
+		const extension = result.extensions[0];
+		const investHandler = extension?.commands.get("invest")?.handler;
+		const beforeStart = extension?.handlers.get("before_agent_start")?.[0];
+		const userMessages: Array<{ content: string; options?: { deliverAs?: "steer" | "followUp" } }> = [];
+		result.runtime.sendUserMessage = (content, options) => {
+			if (typeof content === "string") userMessages.push({ content, options });
+		};
+
+		await investHandler?.("SOXL", {
+			ui: { notify: () => {}, setStatus: () => {} },
+		} as never);
+		const output = (await beforeStart?.(
+			{
+				type: "before_agent_start",
+				prompt: "continue",
+				systemPrompt: "base",
+				systemPromptOptions: {} as never,
+			},
+			{} as never,
+		)) as { systemPrompt?: string } | undefined;
+
+		expect(output?.systemPrompt).toContain("FINANCE SUPERPOWERS MODE");
+		expect(userMessages).toEqual([
+			{
+				content: "Use the finance superpowers workflow for: SOXL",
+				options: { deliverAs: "followUp" },
+			},
+		]);
 	});
 
 	it("persists goal state and injects Codex-style continuation guidance", async () => {

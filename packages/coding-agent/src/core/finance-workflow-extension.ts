@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "./extensions/types.ts";
 
-type WorkflowMode = "off" | "plan" | "grill";
+type WorkflowMode = "off" | "plan" | "invest";
 
 interface WorkflowGoal {
 	objective: string;
@@ -38,8 +38,8 @@ function setStatus(ctx: ExtensionContext, mode: WorkflowMode, goal?: WorkflowGoa
 		ctx.ui.setStatus("finance-workflow", color("warning", "plan"));
 		return;
 	}
-	if (mode === "grill") {
-		ctx.ui.setStatus("finance-workflow", color("accent", "grill"));
+	if (mode === "invest") {
+		ctx.ui.setStatus("finance-workflow", color("accent", "invest"));
 		return;
 	}
 	if (goal?.status === "active") {
@@ -60,14 +60,15 @@ function planModePrompt(): string {
 - Do not force a fixed answer template; organize the plan naturally for the finance question, but make it executable by another finance agent.`;
 }
 
-function grillModePrompt(): string {
-	return `FINANCE GRILL MODE:
-- Pressure-test the user's investment thesis, research plan, assumptions, or decision process.
-- Keep asking until the thesis, evidence, valuation, catalysts, risks, disconfirming evidence, sizing, timing, and falsification criteria are clear.
-- Ask one high-leverage question at a time unless the user explicitly asks for a batch.
-- Do not provide a canned structure or prematurely summarize as if the review is done.
-- Be direct and specific. If the user's premise is weak, say why and ask for the missing evidence or decision criterion.
-- For finance claims that depend on current facts, request or use sourced data before accepting the premise.`;
+function investmentModePrompt(): string {
+	return `FINANCE SUPERPOWERS MODE:
+- Use a Superpowers-style collaborative workflow for investment decisions: clarify the real decision, co-design the model, identify decisive data, then turn the work into an executable research plan.
+- When the user says something like "I want to invest in SOXL", do not stop at a generic checklist. Work with the user to define objective, time horizon, risk budget, benchmark, position type, and what would make the answer actionable.
+- Map the instrument mechanics before judging attractiveness. For leveraged ETFs, explicitly cover underlying exposure, daily reset leverage, path dependency, volatility drag, fees, liquidity, tracking risk, drawdown behavior, and holding-period fit.
+- Build the model around drivers and falsification: base/bull/bear scenarios, return decomposition, sensitivity variables, drawdown limits, sizing rules, entry/exit triggers, and disconfirming evidence.
+- Make the data plan explicit: what data matters, why it matters, source freshness, how it feeds the model, and which missing data would change the recommendation.
+- Ask one high-leverage question at a time when user input materially changes the model; otherwise use available memory, artifacts, finance tools, filings, news, and current sourced data.
+- Do not force a fixed output template. Adapt the structure to the decision, but leave the user with a clear model spec, data checklist, and next research step.`;
 }
 
 function goalPrompt(goal: WorkflowGoal): string {
@@ -106,6 +107,31 @@ function isUnfinishedGoal(goal: WorkflowGoal | undefined): boolean {
 
 export default function financeWorkflowExtension(pi: ExtensionAPI): void {
 	let mode: WorkflowMode = "off";
+
+	function handleInvestmentModeCommand(args: string, ctx: ExtensionContext): void {
+		const trimmed = args.trim();
+		const action = trimmed.toLowerCase();
+		if (action === "off" || action === "done") {
+			mode = "off";
+			ctx.ui.notify("Finance superpowers mode disabled.");
+			setStatus(ctx, mode, latestGoal(ctx));
+			return;
+		}
+
+		if (trimmed) {
+			mode = "invest";
+			ctx.ui.notify("Finance superpowers mode enabled.");
+			setStatus(ctx, mode, latestGoal(ctx));
+			pi.sendUserMessage(`Use the finance superpowers workflow for: ${trimmed}`, {
+				deliverAs: "followUp",
+			});
+			return;
+		}
+
+		mode = mode === "invest" ? "off" : "invest";
+		ctx.ui.notify(mode === "invest" ? "Finance superpowers mode enabled." : "Finance superpowers mode disabled.");
+		setStatus(ctx, mode, latestGoal(ctx));
+	}
 
 	const getGoalTool = defineTool({
 		name: "get_goal",
@@ -172,7 +198,17 @@ export default function financeWorkflowExtension(pi: ExtensionAPI): void {
 		default: false,
 	});
 	pi.registerFlag("grill", {
-		description: "Start in finance grill-me mode",
+		description: "Start in finance superpowers mode (legacy alias)",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("invest", {
+		description: "Start in finance superpowers mode",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("superpower", {
+		description: "Start in finance superpowers mode",
 		type: "boolean",
 		default: false,
 	});
@@ -199,21 +235,23 @@ export default function financeWorkflowExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("grill", {
-		description: "Toggle finance grill-me mode",
-		handler: async (_args, ctx) => {
-			mode = mode === "grill" ? "off" : "grill";
-			ctx.ui.notify(mode === "grill" ? "Grill mode enabled." : "Grill mode disabled.");
-			setStatus(ctx, mode, latestGoal(ctx));
-		},
+		description: "Compatibility alias for /invest",
+		handler: async (args, ctx) => handleInvestmentModeCommand(args, ctx),
 	});
 
 	pi.registerCommand("grill-me", {
-		description: "Toggle finance grill-me mode",
-		handler: async (_args, ctx) => {
-			mode = mode === "grill" ? "off" : "grill";
-			ctx.ui.notify(mode === "grill" ? "Grill mode enabled." : "Grill mode disabled.");
-			setStatus(ctx, mode, latestGoal(ctx));
-		},
+		description: "Compatibility alias for /invest",
+		handler: async (args, ctx) => handleInvestmentModeCommand(args, ctx),
+	});
+
+	pi.registerCommand("invest", {
+		description: "Toggle finance superpowers mode, or use /invest <asset/thesis> to start",
+		handler: async (args, ctx) => handleInvestmentModeCommand(args, ctx),
+	});
+
+	pi.registerCommand("superpower", {
+		description: "Toggle finance superpowers mode, or use /superpower <asset/thesis> to start",
+		handler: async (args, ctx) => handleInvestmentModeCommand(args, ctx),
 	});
 
 	pi.registerCommand("goal", {
@@ -262,8 +300,8 @@ export default function financeWorkflowExtension(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		if (pi.getFlag("plan") === true) {
 			mode = "plan";
-		} else if (pi.getFlag("grill") === true) {
-			mode = "grill";
+		} else if (pi.getFlag("invest") === true || pi.getFlag("superpower") === true || pi.getFlag("grill") === true) {
+			mode = "invest";
 		}
 		setStatus(ctx, mode, latestGoal(ctx));
 	});
@@ -307,7 +345,7 @@ export default function financeWorkflowExtension(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", (event, ctx) => {
 		const blocks: string[] = [];
 		if (mode === "plan") blocks.push(planModePrompt());
-		if (mode === "grill") blocks.push(grillModePrompt());
+		if (mode === "invest") blocks.push(investmentModePrompt());
 		const goal = latestGoal(ctx);
 		if (goal?.status === "active") blocks.push(goalPrompt(goal));
 		if (blocks.length === 0) return undefined;

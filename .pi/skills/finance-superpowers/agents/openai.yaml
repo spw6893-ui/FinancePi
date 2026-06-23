@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finance Superpowers"
+  short_description: "Adaptive investment analysis workflow"
+  default_prompt: "Use $finance-superpowers to help me model whether and how to invest in SOXL."

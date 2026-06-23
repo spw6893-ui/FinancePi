@@ -71,6 +71,11 @@ describe("finance agent extension", () => {
 		expect(output?.systemPrompt).toContain(
 			"Do not force a fixed answer template; choose the natural structure for the question.",
 		);
+		expect(output?.systemPrompt).toContain(
+			"When the user asks how to invest in a stock, ETF, leveraged ETF, crypto asset, or strategy",
+		);
+		expect(output?.systemPrompt).toContain("For leveraged ETFs such as SOXL or TQQQ");
+		expect(output?.systemPrompt).toContain("/skill:finance-superpowers");
 		expect(output?.systemPrompt).not.toContain("compact skill workflow");
 		expect(output?.systemPrompt).not.toContain("Default output shape");
 	});
