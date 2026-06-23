@@ -21,6 +21,7 @@
 - Added `memory_index_search` with a SQLite FTS5-backed derived index for symbol, report path, and source path-aware persistent-memory recall, with lightweight fallback.
 - Added `memory_write_policy` to review proposed memory writes without writing persistent memory.
 - Added source-session validation for session promotion, requiring a real `.jsonl` user/assistant message line.
+- Added built-in finance workflow commands for plan mode, grill-me review, and persisted goal steering.
 - Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
 - Added public API exports for memory audit and compact result types used by external extensions.
 - Added project/session/namespace context for external memory provider tool calls.
