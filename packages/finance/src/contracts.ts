@@ -41,6 +41,8 @@ export interface History {
 	bars: PriceBar[];
 	latestAt: string | null;
 	source: string;
+	range?: string;
+	interval?: string;
 }
 
 export interface NewsItem {
@@ -63,8 +65,12 @@ export interface NewsResult {
 export interface FundamentalFact {
 	label: string;
 	value: number;
+	concept?: string;
 	fiscalYear?: number;
 	fiscalPeriod?: string;
+	periodStart?: string;
+	periodEnd?: string;
+	frame?: string;
 	form?: string;
 	filed?: string;
 	unit?: string;
@@ -77,7 +83,14 @@ export interface Fundamentals {
 	companyName?: string;
 	facts: {
 		revenue?: FundamentalFact;
+		grossProfit?: FundamentalFact;
+		operatingIncome?: FundamentalFact;
 		netIncome?: FundamentalFact;
+		operatingCashFlow?: FundamentalFact;
+		capitalExpenditures?: FundamentalFact;
+		assets?: FundamentalFact;
+		liabilities?: FundamentalFact;
+		stockholdersEquity?: FundamentalFact;
 	};
 	asOf: string;
 	source: string;

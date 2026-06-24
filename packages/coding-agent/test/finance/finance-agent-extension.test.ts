@@ -71,9 +71,18 @@ describe("finance agent extension", () => {
 		expect(output?.systemPrompt).toContain(
 			"Do not force a fixed answer template; choose the natural structure for the question.",
 		);
+		expect(output?.systemPrompt).toContain("company data is the center of the analysis");
+		expect(output?.systemPrompt).toContain("Treat technical analysis as a small auxiliary check");
+		expect(output?.systemPrompt).toContain("When finance_symbol_context returns companyData/fundamentals");
+		expect(output?.systemPrompt).toContain("do attribution analysis, not just data retrieval");
+		expect(output?.systemPrompt).toContain("If no definitive headline explains a move");
 		expect(output?.systemPrompt).toContain(
 			"When the user asks how to invest in a stock, ETF, leveraged ETF, crypto asset, or strategy",
 		);
+		expect(output?.systemPrompt).toContain("For on-chain tokens");
+		expect(output?.systemPrompt).toContain("wallet and flow data as a forensic lens");
+		expect(output?.systemPrompt).toContain("confirmed sellout lower bounds");
+		expect(output?.systemPrompt).toContain("Distinguish current balances, transferred throughput");
 		expect(output?.systemPrompt).toContain("For leveraged ETFs such as SOXL or TQQQ");
 		expect(output?.systemPrompt).toContain("/skill:finance-superpowers");
 		expect(output?.systemPrompt).not.toContain("compact skill workflow");

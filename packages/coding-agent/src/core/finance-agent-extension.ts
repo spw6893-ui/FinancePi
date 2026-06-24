@@ -267,7 +267,14 @@ function formatFundamentalsResult(
 			? `company: symbol=${result.value.symbol}, companyName=${formatValue(result.value.companyName)}, cik=${formatValue(result.value.cik)}, asOf=${result.value.asOf}, source=${result.value.source}`
 			: "company: unavailable",
 		facts?.revenue ? `revenue: ${formatFact(facts.revenue)}` : undefined,
+		facts?.grossProfit ? `grossProfit: ${formatFact(facts.grossProfit)}` : undefined,
+		facts?.operatingIncome ? `operatingIncome: ${formatFact(facts.operatingIncome)}` : undefined,
 		facts?.netIncome ? `netIncome: ${formatFact(facts.netIncome)}` : undefined,
+		facts?.operatingCashFlow ? `operatingCashFlow: ${formatFact(facts.operatingCashFlow)}` : undefined,
+		facts?.capitalExpenditures ? `capitalExpenditures: ${formatFact(facts.capitalExpenditures)}` : undefined,
+		facts?.assets ? `assets: ${formatFact(facts.assets)}` : undefined,
+		facts?.liabilities ? `liabilities: ${formatFact(facts.liabilities)}` : undefined,
+		facts?.stockholdersEquity ? `stockholdersEquity: ${formatFact(facts.stockholdersEquity)}` : undefined,
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -293,13 +300,20 @@ function formatTechnicalDetails(
 }
 
 function formatSymbolContext(label: string, context: SymbolContext, artifact?: MarketArtifact): string {
+	const facts = context.fundamentals?.facts;
 	return [
 		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
 		`summary: symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}, degraded=${formatDegradedShort(context.degradedReasons)}`,
-		`coverage: quote=${context.quote ? "yes" : "no"}, historyBars=${context.history.bars.length}, newsItems=${context.news.items.length}, technical=${context.technicalSnapshot ? "yes" : "no"}, fundamentals=${context.fundamentals ? "yes" : "no"}`,
+		`coverage: quote=${context.quote ? "yes" : "no"}, companyData=${context.fundamentals ? "yes" : "no"}, newsItems=${context.news.items.length}, priceHistoryBars=${context.history.bars.length}, technicalAux=${context.technicalSnapshot ? "yes" : "no"}`,
+		context.quote
+			? `quote: price=${formatValue(context.quote.price)}, changePercent=${formatValue(context.quote.changePercent)}, asOf=${context.quote.asOf}, source=${context.quote.source}`
+			: "quote: unavailable",
+		context.fundamentals
+			? `companyData: companyName=${formatValue(context.fundamentals.companyName)}, cik=${formatValue(context.fundamentals.cik)}, asOf=${context.fundamentals.asOf}, revenue=${formatFact(facts?.revenue)}, grossProfit=${formatFact(facts?.grossProfit)}, operatingIncome=${formatFact(facts?.operatingIncome)}, netIncome=${formatFact(facts?.netIncome)}, operatingCashFlow=${formatFact(facts?.operatingCashFlow)}, capex=${formatFact(facts?.capitalExpenditures)}, assets=${formatFact(facts?.assets)}, liabilities=${formatFact(facts?.liabilities)}, equity=${formatFact(facts?.stockholdersEquity)}`
+			: "companyData: unavailable",
 		context.technicalSnapshot
-			? `quickTechnical: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}`
-			: "quickTechnical: unavailable",
+			? `technicalAux: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}`
+			: "technicalAux: unavailable",
 	].join("\n");
 }
 
@@ -411,12 +425,15 @@ function financeArtifactLines(details: unknown): string[] | undefined {
 	if (isSymbolContext(details)) return symbolContextArtifactLines(details);
 	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
 		return [
-			"symbol,price,priceSource,latestClose,trend,newsCount,degradedReasons",
+			"symbol,price,priceSource,companyName,revenue,netIncome,latestClose,trend,newsCount,degradedReasons",
 			...details.contexts.map((context) =>
 				csvRow([
 					context.symbol,
 					context.quote?.price,
 					context.quote?.source,
+					context.fundamentals?.companyName,
+					context.fundamentals?.facts.revenue?.value,
+					context.fundamentals?.facts.netIncome?.value,
 					context.technicalSnapshot?.latestClose,
 					context.technicalSnapshot?.trend,
 					context.news.items.length,
@@ -440,7 +457,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function symbolContextArtifactLines(context: SymbolContext): string[] {
 	return [
-		"section,time,open,high,low,close,volume,publishedAt,publisher,title,source,status,latestAt,degradedReason",
+		"section,time,open,high,low,close,volume,publishedAt,publisher,title,source,status,latestAt,degradedReason,metric,value,unit,fiscalYear,fiscalPeriod,periodStart,periodEnd,frame,form,filed,companyName,cik",
 		...context.sourceHealth.map((health) =>
 			csvRow([
 				"source_health",
@@ -459,6 +476,52 @@ function symbolContextArtifactLines(context: SymbolContext): string[] {
 				health.degradedReason,
 			]),
 		),
+		...(context.fundamentals
+			? [
+					context.fundamentals.facts.revenue,
+					context.fundamentals.facts.grossProfit,
+					context.fundamentals.facts.operatingIncome,
+					context.fundamentals.facts.netIncome,
+					context.fundamentals.facts.operatingCashFlow,
+					context.fundamentals.facts.capitalExpenditures,
+					context.fundamentals.facts.assets,
+					context.fundamentals.facts.liabilities,
+					context.fundamentals.facts.stockholdersEquity,
+				].flatMap((fact) =>
+					fact
+						? [
+								csvRow([
+									"fundamental",
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									undefined,
+									context.fundamentals?.source,
+									undefined,
+									context.fundamentals?.asOf,
+									undefined,
+									fact.label,
+									fact.value,
+									fact.unit,
+									fact.fiscalYear,
+									fact.fiscalPeriod,
+									fact.periodStart,
+									fact.periodEnd,
+									fact.frame,
+									fact.form,
+									fact.filed,
+									context.fundamentals?.companyName,
+									context.fundamentals?.cik,
+								]),
+							]
+						: [],
+				)
+			: []),
 		...context.history.bars.map((bar) =>
 			csvRow(["bar", bar.time, bar.open, bar.high, bar.low, bar.close, bar.volume]),
 		),
@@ -494,7 +557,7 @@ function formatArtifact(artifact: MarketArtifact | undefined): string {
 
 function formatFact(fact: Fundamentals["facts"]["revenue"]): string {
 	if (!fact) return "unavailable";
-	return `${fact.label}=${fact.value}${fact.unit ? ` ${fact.unit}` : ""}, fy=${formatValue(fact.fiscalYear)}, fp=${formatValue(fact.fiscalPeriod)}, form=${formatValue(fact.form)}, filed=${formatValue(fact.filed)}`;
+	return `${fact.label}=${fact.value}${fact.unit ? ` ${fact.unit}` : ""}, concept=${formatValue(fact.concept)}, fy=${formatValue(fact.fiscalYear)}, fp=${formatValue(fact.fiscalPeriod)}, period=${formatValue(fact.periodStart)}..${formatValue(fact.periodEnd)}, frame=${formatValue(fact.frame)}, form=${formatValue(fact.form)}, filed=${formatValue(fact.filed)}`;
 }
 
 function formatValue(value: unknown): string {
@@ -890,10 +953,11 @@ const secFactsTool = defineTool({
 const technicalTool = defineTool({
 	name: "finance_technical_snapshot",
 	label: "Finance Technical Snapshot",
-	description: "Fetch history and compute a technical snapshot for a US equity or ETF symbol.",
-	promptSnippet: "Compute trend, returns, and moving averages from sourced history",
+	description: "Fetch history and compute an auxiliary technical snapshot for a US equity or ETF symbol.",
+	promptSnippet: "Compute auxiliary trend, returns, and moving averages from sourced history",
 	promptGuidelines: [
-		"finance_technical_snapshot provides trend, momentum, moving averages, and recent returns.",
+		"finance_technical_snapshot provides auxiliary trend, momentum, moving averages, and recent returns.",
+		"For single-company investment work, do not lead with technicals; use them after business quality, financial trajectory, valuation, and catalysts.",
 		"When making technical conclusions, account for insufficient or degraded history instead of overstating certainty.",
 	],
 	parameters: Type.Object({
@@ -922,10 +986,12 @@ const technicalTool = defineTool({
 const contextTool = defineTool({
 	name: "finance_symbol_context",
 	label: "Finance Symbol Context",
-	description: "Build quote, history, news, technical and SEC context for a US equity or ETF symbol.",
-	promptSnippet: "Build sourced full research context for a US equity/ETF",
+	description:
+		"Build quote, company data, history, news, auxiliary technical and SEC context for a US equity or ETF symbol.",
+	promptSnippet: "Build sourced company-first research context for a US equity/ETF",
 	promptGuidelines: [
-		"finance_symbol_context bundles quote, history, news, technical, and SEC data for a single US equity or ETF.",
+		"finance_symbol_context bundles quote, SEC company data, news, price history, and a small auxiliary technical snapshot for a single US equity or ETF.",
+		"For single stocks, inspect companyData and missing fundamental fields before discussing price action or technical trend.",
 		"Use finance_symbol_context when broad symbol context would help, but choose the response structure yourself.",
 	],
 	parameters: Type.Object({
@@ -1208,7 +1274,15 @@ FINANCE AGENT MODE:
 - Develop the analysis until the main drivers, evidence, uncertainty, and implications are clear; do not stop simply because one tool returned data.
 - Only be brief when the user explicitly asks for a quick take, short answer, one-liner, or no details.
 - Do not force a fixed answer template; choose the natural structure for the question.
+- For single-company equity research, company data is the center of the analysis: business model, revenue drivers, margins, cash generation, balance sheet, capital allocation, valuation, catalysts, and thesis-breaker risks come before chart discussion.
+- Treat technical analysis as a small auxiliary check, not the main research method. Do not anchor a buy/sell conclusion on trend, moving averages, RSI-like momentum, or recent price action when company fundamentals, valuation, or business data are available or missing.
+- When finance_symbol_context returns companyData/fundamentals, use those fields explicitly. If SEC/company data is missing, stale, or too thin, say that this blocks or lowers confidence and identify the company data needed next instead of filling the gap with technicals.
+- For "why is X moving", premarket, after-hours, earnings reaction, or "why is SOXL down/up" questions, do attribution analysis, not just data retrieval. Build a time-aligned causal chain: move magnitude, when it started, directly affected symbol, related stocks/ETF/index exposure, same-window news/filings/earnings/guidance, macro/sector tape, and whether each link is confirmed, likely, or only correlated.
+- When explaining ETF or leveraged ETF moves, separate index/underlying move, daily leverage math, major constituent contribution, sector beta, and idiosyncratic component news. For SOXL, do not treat SOXL as a standalone company; reason through semiconductor/index and major holdings such as NVDA, AVGO, AMD, MU, AMAT, KLAC, etc. when relevant.
+- If no definitive headline explains a move, do not stop at "I don't know." Give a ranked attribution with confidence levels, name the evidence you checked, and state exactly what missing data would confirm or falsify the explanation.
 - When the user asks how to invest in a stock, ETF, leveraged ETF, crypto asset, or strategy, act as a research partner: clarify the decision objective when needed, co-design the model, identify decisive data inputs, and separate decision rules from evidence collection.
+- For on-chain tokens, treat wallet and flow data as a forensic lens when available: holder concentration, project/insider/treasury/exchange/DEX wallet roles, distribution waves, confirmed sellout lower bounds, dormant supply, CEX/DEX routing, liquidity depth, suspected wash-volume risk, bridge/mint authority, and monitoring triggers.
+- Do not claim insider selling, wash trading, wallet common ownership, unlock pressure, or contract authority unless supported by chain artifacts, explorer labels, user-provided reports, or configured connectors. Distinguish current balances, transferred throughput, confirmed sold amount, and possible future supply.
 - For leveraged ETFs such as SOXL or TQQQ, explicitly account for underlying exposure, daily reset leverage, path dependency, volatility drag, fees, liquidity, tracking risk, drawdown behavior, and holding-period fit before discussing expected return.
 - For open-ended investment-decision, modeling, sizing, thesis, or "what data matters" questions, use the project skill /skill:finance-superpowers when available. It is a Superpowers-style method, not a fixed output template.
 - Do not claim to execute trades or connect to brokerage accounts.

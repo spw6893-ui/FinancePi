@@ -72,6 +72,24 @@ describe("ModelRegistry", () => {
 		writeFileSync(modelsJsonPath, JSON.stringify({ providers }));
 	}
 
+	function withEnv(name: string, value: string | undefined, fn: () => void) {
+		const original = process.env[name];
+		try {
+			if (value === undefined) {
+				delete process.env[name];
+			} else {
+				process.env[name] = value;
+			}
+			fn();
+		} finally {
+			if (original === undefined) {
+				delete process.env[name];
+			} else {
+				process.env[name] = original;
+			}
+		}
+	}
+
 	const openAiModel: Model<Api> = {
 		id: "test-openai-model",
 		name: "Test OpenAI Model",
@@ -169,6 +187,54 @@ describe("ModelRegistry", () => {
 			// Google models should still have their original baseUrl
 			expect(googleModels.length).toBeGreaterThan(0);
 			expect(googleModels[0].baseUrl).not.toBe("https://my-proxy.example.com/v1");
+		});
+
+		test("OPENAI_BASE_URL overrides built-in OpenAI model endpoints", () => {
+			withEnv("OPENAI_BASE_URL", "https://openai-proxy.example.com/v1", () => {
+				const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+				const openAiModels = getModelsForProvider(registry, "openai");
+
+				expect(openAiModels.length).toBeGreaterThan(0);
+				for (const model of openAiModels) {
+					expect(model.baseUrl).toBe("https://openai-proxy.example.com/v1");
+				}
+			});
+		});
+
+		test("models.json OpenAI baseUrl override takes precedence over OPENAI_BASE_URL", () => {
+			withEnv("OPENAI_BASE_URL", "https://env-openai-proxy.example.com/v1", () => {
+				writeRawModelsJson({
+					openai: overrideConfig("https://models-openai-proxy.example.com/v1"),
+				});
+
+				const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+				const openAiModels = getModelsForProvider(registry, "openai");
+
+				expect(openAiModels.length).toBeGreaterThan(0);
+				for (const model of openAiModels) {
+					expect(model.baseUrl).toBe("https://models-openai-proxy.example.com/v1");
+				}
+			});
+		});
+
+		test("OPENAI_BASE_URL still applies when models.json only overrides OpenAI compat", () => {
+			withEnv("OPENAI_BASE_URL", "https://openai-proxy.example.com/v1", () => {
+				writeRawModelsJson({
+					openai: {
+						compat: {
+							supportsUsageInStreaming: false,
+						},
+					},
+				});
+
+				const registry = ModelRegistry.create(authStorage, modelsJsonPath);
+				const openAiModels = getModelsForProvider(registry, "openai");
+
+				expect(openAiModels.length).toBeGreaterThan(0);
+				for (const model of openAiModels) {
+					expect(model.baseUrl).toBe("https://openai-proxy.example.com/v1");
+				}
+			});
 		});
 
 		test("can mix baseUrl override and models merge", () => {

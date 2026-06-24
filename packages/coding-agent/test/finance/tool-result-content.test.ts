@@ -96,7 +96,42 @@ describe("finance tool result content", () => {
 					trend: "uptrend",
 					source: "computed_from_history",
 				},
-				fundamentals: null,
+				fundamentals: {
+					symbol: "NVDA",
+					market: "US",
+					cik: "0001045810",
+					companyName: "NVIDIA Corporation",
+					facts: {
+						revenue: {
+							label: "Revenue",
+							value: 130497000000,
+							concept: "RevenueFromContractWithCustomerExcludingAssessedTax",
+							fiscalYear: 2026,
+							fiscalPeriod: "FY",
+							periodStart: "2025-02-01",
+							periodEnd: "2026-01-31",
+							frame: "CY2025",
+							form: "10-K",
+							filed: "2026-03-01",
+							unit: "USD",
+						},
+						netIncome: {
+							label: "Net income",
+							value: 72880000000,
+							concept: "NetIncomeLoss",
+							fiscalYear: 2026,
+							fiscalPeriod: "FY",
+							periodStart: "2025-02-01",
+							periodEnd: "2026-01-31",
+							frame: "CY2025",
+							form: "10-K",
+							filed: "2026-03-01",
+							unit: "USD",
+						},
+					},
+					asOf: "2026-03-01",
+					source: "sec_companyfacts",
+				},
 				sourceHealth: [{ source: "test_quote", status: "ok", latestAt: "2026-06-20T00:00:00.000Z" }],
 				degradedReasons: [],
 				asOf: "2026-06-20T00:00:00.000Z",
@@ -111,9 +146,16 @@ describe("finance tool result content", () => {
 
 			expect(text).toContain(".pi/artifacts/market-data/");
 			expect(text).toContain("coverage: quote=yes");
-			expect(text).toContain("historyBars=2");
+			expect(text).toContain("companyData=yes");
+			expect(text).toContain("priceHistoryBars=2");
 			expect(text).toContain("newsItems=1");
-			expect(text).toContain("quickTechnical: latestClose=2");
+			expect(text).toContain("companyData: companyName=NVIDIA Corporation");
+			expect(text).toContain("revenue=Revenue=130497000000 USD");
+			expect(text).toContain("netIncome=Net income=72880000000 USD");
+			expect(text).toContain("concept=RevenueFromContractWithCustomerExcludingAssessedTax");
+			expect(text).toContain("period=2025-02-01..2026-01-31");
+			expect(text).toContain("technicalAux: latestClose=2");
+			expect(text).not.toContain("quickTechnical");
 			expect(text).not.toContain("source_health_csv:");
 			expect(text).not.toContain("bars_csv_last_2:");
 			expect(text).not.toContain("news_csv_top_1:");
@@ -124,6 +166,10 @@ describe("finance tool result content", () => {
 			expect(artifactPath).toBeTruthy();
 			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
 			expect(csv).toContain("source_health");
+			expect(csv).toContain("fundamental");
+			expect(csv).toContain(
+				"Revenue,130497000000,USD,2026,FY,2025-02-01,2026-01-31,CY2025,10-K,2026-03-01,NVIDIA Corporation,0001045810",
+			);
 			expect(csv).toContain("bar,2026-06-19");
 			expect(csv).toContain("news,NA,NA,NA,NA,NA,NA,2026-06-20T00:00:00.000Z,Test,Nvidia headline,test_news");
 		} finally {

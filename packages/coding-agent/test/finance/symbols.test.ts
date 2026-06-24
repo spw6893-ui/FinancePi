@@ -7,6 +7,7 @@ describe("finance symbol helpers", () => {
 		expect(normalizeSymbol("spy")).toBe("SPY");
 		expect(normalizeSymbol(" brk-b ")).toBe("BRK-B");
 		expect(normalizeSymbol("brk/b")).toBe("BRK-B");
+		expect(normalizeSymbol("^icesemit")).toBe("^ICESEMIT");
 	});
 
 	it("infers US as the default market for stock-like tickers", () => {

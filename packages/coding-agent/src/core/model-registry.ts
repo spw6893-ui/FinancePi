@@ -246,6 +246,47 @@ interface ProviderRequestConfig {
 	authHeader?: boolean;
 }
 
+function normalizeOpenAiBaseUrl(baseUrl: string): string {
+	const trimmed = baseUrl.trim().replace(/\/+$/, "");
+	if (!trimmed) return "";
+
+	try {
+		const url = new URL(trimmed);
+		if (url.pathname === "" || url.pathname === "/") {
+			url.pathname = "/v1";
+			return url.toString().replace(/\/+$/, "");
+		}
+	} catch {
+		return trimmed;
+	}
+
+	return trimmed;
+}
+
+function getEnvProviderOverride(provider: string, authStorage: AuthStorage): ProviderOverride | undefined {
+	if (provider !== "openai") return undefined;
+
+	const providerEnv = authStorage.getProviderEnv(provider);
+	const baseUrl = providerEnv?.OPENAI_BASE_URL ?? process.env.OPENAI_BASE_URL;
+	if (!baseUrl) return undefined;
+
+	const normalizedBaseUrl = normalizeOpenAiBaseUrl(baseUrl);
+	return normalizedBaseUrl ? { baseUrl: normalizedBaseUrl } : undefined;
+}
+
+function mergeProviderOverride(
+	configOverride: ProviderOverride | undefined,
+	envOverride: ProviderOverride | undefined,
+): ProviderOverride | undefined {
+	if (!configOverride) return envOverride;
+	if (!envOverride) return configOverride;
+
+	return {
+		baseUrl: configOverride.baseUrl ?? envOverride.baseUrl,
+		compat: configOverride.compat,
+	};
+}
+
 export type ResolvedRequestAuth =
 	| {
 			ok: true;
@@ -433,7 +474,10 @@ export class ModelRegistry {
 	): Model<Api>[] {
 		return getProviders().flatMap((provider) => {
 			const models = getModels(provider as KnownProvider) as Model<Api>[];
-			const providerOverride = overrides.get(provider);
+			const providerOverride = mergeProviderOverride(
+				overrides.get(provider),
+				getEnvProviderOverride(provider, this.authStorage),
+			);
 			const perModelOverrides = modelOverrides.get(provider);
 
 			return models.map((m) => {

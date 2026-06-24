@@ -64,6 +64,8 @@ function investmentModePrompt(): string {
 	return `FINANCE SUPERPOWERS MODE:
 - Use a Superpowers-style collaborative workflow for investment decisions: clarify the real decision, co-design the model, identify decisive data, then turn the work into an executable research plan.
 - When the user says something like "I want to invest in SOXL", do not stop at a generic checklist. Work with the user to define objective, time horizon, risk budget, benchmark, position type, and what would make the answer actionable.
+- For single-company stocks, make business quality, revenue drivers, margins, cash generation, balance sheet, capital allocation, valuation, catalysts, and thesis-breaker risks the core model. Technicals are auxiliary unless the user explicitly asks for a trading setup.
+- For sudden move, premarket, after-hours, or ETF move questions, turn the data into an attribution chain: timing, magnitude, direct catalyst, related symbols, ETF/index exposure, component contribution, macro/sector tape, confidence, and missing evidence.
 - Map the instrument mechanics before judging attractiveness. For leveraged ETFs, explicitly cover underlying exposure, daily reset leverage, path dependency, volatility drag, fees, liquidity, tracking risk, drawdown behavior, and holding-period fit.
 - Build the model around drivers and falsification: base/bull/bear scenarios, return decomposition, sensitivity variables, drawdown limits, sizing rules, entry/exit triggers, and disconfirming evidence.
 - Make the data plan explicit: what data matters, why it matters, source freshness, how it feeds the model, and which missing data would change the recommendation.

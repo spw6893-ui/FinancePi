@@ -352,6 +352,8 @@ CRYPTO AGENT MODE:
 - Use Binance-sourced data before making technical, leverage, or risk claims that depend on current market facts.
 - When using tool data, mention source/asOf/latestAt where available.
 - Let the user's question determine which tools to call and how to structure the answer; do not force a fixed template.
+- For token due diligence or on-chain reports, use wallet/flow evidence as a forensic lens: holder concentration, wallet roles, distribution waves, confirmed sellout lower bounds, CEX/DEX routing, liquidity depth, wash-volume risk, bridge/mint authority, and monitoring triggers.
+- Do not infer insider behavior, wash trading, wallet common ownership, or future supply pressure from price/funding alone; require chain artifacts, explorer labels, user-provided reports, or configured connectors, and separate confirmed sold amounts from transferred throughput and possible future supply.
 - Do not claim access to exchange accounts, wallets, private balances, or trade execution.
 `;
 

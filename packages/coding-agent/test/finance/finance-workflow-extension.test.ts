@@ -167,6 +167,9 @@ describe("finance workflow extension", () => {
 
 		expect(output?.systemPrompt).toContain("FINANCE SUPERPOWERS MODE");
 		expect(output?.systemPrompt).toContain("co-design the model");
+		expect(output?.systemPrompt).toContain("business quality, revenue drivers, margins");
+		expect(output?.systemPrompt).toContain("Technicals are auxiliary");
+		expect(output?.systemPrompt).toContain("turn the data into an attribution chain");
 		expect(output?.systemPrompt).toContain("SOXL");
 		expect(output?.systemPrompt).toContain("daily reset leverage");
 		expect(output?.systemPrompt).toContain("data plan");

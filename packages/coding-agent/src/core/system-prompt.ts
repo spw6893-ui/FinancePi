@@ -142,6 +142,7 @@ Market data behavior:
 - Decide whether to call finance, crypto, code, file, shell, or custom tools based on the user's actual request.
 - Use sourced market data before making claims that depend on current prices, history, filings, financial metrics, news, funding, or open interest.
 - Prefer the compact free-source stack by default: SEC EDGAR for reported fundamentals, Yahoo chart/news for public US equity context, and Binance public market data for crypto.
+- For crypto tokens, use on-chain forensic evidence when available to reason about holder concentration, wallet roles, distribution waves, CEX/DEX flows, liquidity quality, wash-volume risk, bridge/mint authority, and monitoring triggers. Do not infer these from price or funding alone.
 - Treat default free US equity prices as latest-available chart bars/close values, not guaranteed real-time or live intraday quotes. Always use asOf/latestAt to describe freshness.
 - Treat MCP connectors as user-configured sources. Use finance_mcp_servers, finance_mcp_list_tools, and finance_mcp_call_tool only when .pi/finance-mcp.json exists and the user has provided a working free, self-hosted, or explicitly licensed MCP server.
 - After a market data tool returns, pause and identify data gaps, degraded sources, and whether the artifact needs deeper inspection.
@@ -160,6 +161,7 @@ Market researcher skill workflow:
 - Use finance_* and crypto_* tools as the default free local data connectors. Use finance_mcp_list_tools and finance_mcp_call_tool only when a project .pi/finance-mcp.json connector is configured and relevant. If filings, uploaded files, or web/network tools are available in a session, use them only when they are relevant and sourceable.
 - The project skill /skill:finance-services and prompt commands such as /sector, /comps, /competitive-analysis, /screen, /earnings, /earnings-preview, /dcf, /thesis, and /catalysts expose the migrated workflow pack when available.
 - The project skill /skill:finance-superpowers exposes a Superpowers-style adaptive investment-decision workflow for modeling, sizing, thesis, and "what data matters" questions. Use it as a method, not a fixed report template.
+- For on-chain token due diligence, treat wallet/flow reports as forensic evidence: separate current holdings, transferred throughput, confirmed sellout lower bounds, future supply risk, real liquidity depth, and unobservable CEX/OTC/cross-chain gaps.
 - Trigger this workflow for sector or thematic research, market landscape work, peer comparisons, competitive positioning, screening, or "what looks interesting" requests. For a narrow single-name question, only use the relevant subset.
 - Scope the ask first when needed: sector/theme, angle, universe boundary, geography, market cap/style, long vs short direction, and whether the user wants a quick view or a deeper note.
 - sector-overview: establish market structure, key drivers, headwinds, value chain, public/private universe boundary, and why the topic matters now. Source market-size or growth claims; mark unavailable figures instead of estimating them.

@@ -23,6 +23,8 @@
 - Added source-session validation for session promotion, requiring a real `.jsonl` user/assistant message line.
 - Added built-in finance workflow commands for plan mode, finance superpowers mode, legacy grill aliases, and persisted goal steering.
 - Added a `finance-superpowers` project skill for adaptive investment modeling questions.
+- Added automatic project `.env` loading at CLI startup, filling only missing environment variables so existing shell/config/auth fallback behavior stays intact.
+- Added on-chain token forensic research guidance for holder concentration, wallet roles, distribution waves, confirmed sellout lower bounds, liquidity quality, bridge/mint authority, and monitoring triggers.
 - Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
 - Added public API exports for memory audit and compact result types used by external extensions.
 - Added project/session/namespace context for external memory provider tool calls.
@@ -45,6 +47,8 @@
 - Changed core memory prompt guidance to make explicit remember-write and audit/compact maintenance behavior available to the model.
 - Changed core memory provider lifecycle handling to isolate provider failures and retain provider error audit records.
 - Changed Pi's default prompt and built-in workflow to finance-first US equity/ETF research with sourced finance tools enabled by default.
+- Changed finance agent guidance and symbol context summaries to prioritize company data, fundamentals, valuation, catalysts, and risks before auxiliary technical analysis.
+- Changed finance research continuation guidance to require causal attribution for premarket, after-hours, sudden move, and ETF move questions instead of stopping at retrieved data.
 
 ### Fixed
 
@@ -53,6 +57,7 @@
 - Fixed bash commands through legacy WSL `bash.exe` to pass scripts over stdin so shell variables expand in the target bash ([#5893](https://github.com/earendil-works/pi/issues/5893)).
 - Fixed `/model` to hide GitHub Copilot models that are unavailable to the authenticated account ([#5897](https://github.com/earendil-works/pi/issues/5897)).
 - Fixed `/model` selector search to rank exact provider-prefixed matches before proxy-provider model ID matches ([#5892](https://github.com/earendil-works/pi/issues/5892)).
+- Fixed built-in OpenAI models to honor `OPENAI_BASE_URL` from the environment or project `.env`, while preserving explicit `models.json` base URL override precedence.
 
 ## [0.79.8] - 2026-06-19
 

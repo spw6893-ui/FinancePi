@@ -72,6 +72,10 @@ describe("market research continuation loop", () => {
 		expect(textOf(injected!.content as (TextContent | ImageContent)[])).toContain(
 			"Do not answer yet only because a market tool returned",
 		);
+		expect(textOf(injected!.content as (TextContent | ImageContent)[])).toContain(
+			"premarket, after-hours, or sudden move questions",
+		);
+		expect(textOf(injected!.content as (TextContent | ImageContent)[])).toContain("ranked explanation");
 	});
 
 	it("does not continue for non-market tool results", async () => {

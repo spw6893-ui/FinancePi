@@ -51,7 +51,7 @@ pi
 | Anthropic | `ANTHROPIC_API_KEY` | `anthropic` |
 | Ant Ling | `ANT_LING_API_KEY` | `ant-ling` |
 | Azure OpenAI Responses | `AZURE_OPENAI_API_KEY` | `azure-openai-responses` |
-| OpenAI | `OPENAI_API_KEY` | `openai` |
+| OpenAI | `OPENAI_API_KEY` + optional `OPENAI_BASE_URL` | `openai` |
 | DeepSeek | `DEEPSEEK_API_KEY` | `deepseek` |
 | NVIDIA NIM | `NVIDIA_API_KEY` | `nvidia` |
 | Google Gemini | `GEMINI_API_KEY` | `google` |
@@ -79,6 +79,16 @@ pi
 | Xiaomi MiMo Token Plan (Singapore) | `XIAOMI_TOKEN_PLAN_SGP_API_KEY` | `xiaomi-token-plan-sgp` |
 
 Reference for environment variables and `auth.json` keys: [`const envMap`](https://github.com/earendil-works/pi-mono/blob/main/packages/ai/src/env-api-keys.ts) in [`packages/ai/src/env-api-keys.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/ai/src/env-api-keys.ts).
+
+For OpenAI-compatible proxies, set `OPENAI_BASE_URL` to route the built-in OpenAI models through that endpoint:
+
+```bash
+export OPENAI_API_KEY=sk-...
+export OPENAI_BASE_URL=https://proxy.example.com/v1
+pi --provider openai --model gpt-5.5
+```
+
+If `OPENAI_BASE_URL` is a root URL without a path, pi normalizes it to `/v1`. A `models.json` provider-level `baseUrl` override for `openai` takes precedence over `OPENAI_BASE_URL`.
 
 #### Auth File
 
