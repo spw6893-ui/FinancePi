@@ -9,6 +9,8 @@ export type {
 	FinanceMcpToolsResult,
 	Fundamentals,
 	History,
+	MacroObservation,
+	MacroSnapshot,
 	MarketBrief,
 	MarketCode,
 	NewsItem,

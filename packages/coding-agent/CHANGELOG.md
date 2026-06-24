@@ -24,6 +24,8 @@
 - Added built-in finance workflow commands for plan mode, finance superpowers mode, legacy grill aliases, and persisted goal steering.
 - Added a `finance-superpowers` project skill for adaptive investment modeling questions.
 - Added automatic project `.env` loading at CLI startup, filling only missing environment variables so existing shell/config/auth fallback behavior stays intact.
+- Added model-visible provider health summaries for enriched finance data sources, including configured/used/degraded status for Finnhub, Alpha Vantage, and FRED-backed results.
+- Added a project `pdf-research` skill with a reusable PDF text/table extractor and finance-agent guidance to proactively use it for PDF reports and filings.
 - Added on-chain token forensic research guidance for holder concentration, wallet roles, distribution waves, confirmed sellout lower bounds, liquidity quality, bridge/mint authority, and monitoring triggers.
 - Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
 - Added public API exports for memory audit and compact result types used by external extensions.

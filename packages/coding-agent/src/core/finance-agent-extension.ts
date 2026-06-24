@@ -130,7 +130,8 @@ function formatFinanceDetails(label: string, details: unknown, artifact?: Market
 	if (isQuoteSourceResult(details)) return formatQuoteResult(label, details, artifact);
 	if (isTechnicalDetails(details)) return formatTechnicalDetails(label, details, artifact);
 	if (isSymbolContext(details)) return formatSymbolContext(label, details, artifact);
-	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
+	if (isMarketBrief(details)) return formatMarketBrief(label, details, artifact);
+	if (isCompareSymbolsResult(details)) {
 		const contexts = details.contexts.slice(0, 10);
 		return [
 			`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
@@ -197,7 +198,7 @@ function isCompareSymbolsResult(value: unknown): value is CompareSymbolsResult {
 }
 
 function isMarketBrief(value: unknown): value is MarketBrief {
-	return isCompareSymbolsResult(value);
+	return isCompareSymbolsResult(value) && "macro" in value;
 }
 
 function isTechnicalDetails(value: unknown): value is {
@@ -251,6 +252,7 @@ function formatNewsResult(label: string, result: SourceResult<NewsResult>, artif
 	return [
 		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
 		`summary: ${formatHealthShort(result.health)}, symbol=${result.value.symbol}, items=${result.value.items.length}, latestAt=${formatValue(result.value.latestAt)}`,
+		result.value.sourceHealth?.length ? `sources: ${formatSourceHealthList(result.value.sourceHealth)}` : undefined,
 	].join("\n");
 }
 
@@ -305,6 +307,7 @@ function formatSymbolContext(label: string, context: SymbolContext, artifact?: M
 		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
 		`summary: symbol=${context.symbol}, market=${context.market}, asOf=${context.asOf}, degraded=${formatDegradedShort(context.degradedReasons)}`,
 		`coverage: quote=${context.quote ? "yes" : "no"}, companyData=${context.fundamentals ? "yes" : "no"}, newsItems=${context.news.items.length}, priceHistoryBars=${context.history.bars.length}, technicalAux=${context.technicalSnapshot ? "yes" : "no"}`,
+		context.sourceHealth.length ? `sources: ${formatSourceHealthList(context.sourceHealth)}` : undefined,
 		context.quote
 			? `quote: price=${formatValue(context.quote.price)}, changePercent=${formatValue(context.quote.changePercent)}, asOf=${context.quote.asOf}, source=${context.quote.source}`
 			: "quote: unavailable",
@@ -315,6 +318,28 @@ function formatSymbolContext(label: string, context: SymbolContext, artifact?: M
 			? `technicalAux: latestClose=${formatValue(context.technicalSnapshot.latestClose)}, trend=${context.technicalSnapshot.trend}, asOf=${formatValue(context.technicalSnapshot.asOf)}`
 			: "technicalAux: unavailable",
 	].join("\n");
+}
+
+function formatMarketBrief(label: string, details: MarketBrief, artifact?: MarketArtifact): string {
+	const contexts = details.contexts.slice(0, 10);
+	const macroLine =
+		details.macro.observations.length > 0
+			? `macro: ${details.macro.observations
+					.map(
+						(observation) =>
+							`${observation.label}=${formatValue(observation.value)} ${observation.unit} asOf=${observation.date}`,
+					)
+					.join("; ")}`
+			: "macro: unavailable";
+	return [
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: asOf=${details.asOf}, symbols=${contexts.map((context) => context.symbol).join(",")}, degraded=${formatDegradedShort(details.degradedReasons)}`,
+		`symbols=${contexts.map((context) => context.symbol).join(",")}`,
+		details.sourceHealth.length ? `sources: ${formatSourceHealthList(details.sourceHealth)}` : undefined,
+		macroLine,
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 function formatMcpServersDetails(label: string, details: FinanceMcpServersDetails, artifact?: MarketArtifact): string {
@@ -401,8 +426,10 @@ function financeArtifactLines(details: unknown): string[] | undefined {
 	}
 	if (isNewsSourceResult(details)) {
 		return [
-			"publishedAt,publisher,title,url",
-			...details.value.items.map((item) => csvRow([item.publishedAt, item.publisher, item.title, item.url])),
+			"publishedAt,publisher,title,url,source",
+			...details.value.items.map((item) =>
+				csvRow([item.publishedAt, item.publisher, item.title, item.url, item.source]),
+			),
 		];
 	}
 	if (isQuoteSourceResult(details)) {
@@ -423,7 +450,8 @@ function financeArtifactLines(details: unknown): string[] | undefined {
 		];
 	}
 	if (isSymbolContext(details)) return symbolContextArtifactLines(details);
-	if (isCompareSymbolsResult(details) || isMarketBrief(details)) {
+	if (isMarketBrief(details)) return marketBriefArtifactLines(details);
+	if (isCompareSymbolsResult(details)) {
 		return [
 			"symbol,price,priceSource,companyName,revenue,netIncome,latestClose,trend,newsCount,degradedReasons",
 			...details.contexts.map((context) =>
@@ -457,7 +485,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function symbolContextArtifactLines(context: SymbolContext): string[] {
 	return [
-		"section,time,open,high,low,close,volume,publishedAt,publisher,title,source,status,latestAt,degradedReason,metric,value,unit,fiscalYear,fiscalPeriod,periodStart,periodEnd,frame,form,filed,companyName,cik",
+		"section,time,open,high,low,close,volume,publishedAt,publisher,title,source,status,latestAt,degradedReason,configured,used,metric,value,unit,fiscalYear,fiscalPeriod,periodStart,periodEnd,frame,form,filed,companyName,cik",
 		...context.sourceHealth.map((health) =>
 			csvRow([
 				"source_health",
@@ -474,6 +502,8 @@ function symbolContextArtifactLines(context: SymbolContext): string[] {
 				health.status,
 				health.latestAt,
 				health.degradedReason,
+				health.configured,
+				health.used,
 			]),
 		),
 		...(context.fundamentals
@@ -543,12 +573,79 @@ function symbolContextArtifactLines(context: SymbolContext): string[] {
 	];
 }
 
+function marketBriefArtifactLines(details: MarketBrief): string[] {
+	return [
+		"section,seriesId,label,value,unit,date,source,status,latestAt,degradedReason,configured,used,symbol,price,priceSource,companyName,revenue,netIncome,latestClose,trend,newsCount,degradedReasons",
+		...details.macro.observations.map((observation) =>
+			csvRow([
+				"macro",
+				observation.seriesId,
+				observation.label,
+				observation.value,
+				observation.unit,
+				observation.date,
+				observation.source,
+			]),
+		),
+		...details.sourceHealth.map((health) =>
+			csvRow([
+				"source_health",
+				health.source,
+				health.status,
+				health.latestAt,
+				health.degradedReason,
+				health.configured,
+				health.used,
+			]),
+		),
+		...details.contexts.map((context) =>
+			csvRow([
+				"symbol",
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				context.symbol,
+				context.quote?.price,
+				context.quote?.source,
+				context.fundamentals?.companyName,
+				context.fundamentals?.facts.revenue?.value,
+				context.fundamentals?.facts.netIncome?.value,
+				context.technicalSnapshot?.latestClose,
+				context.technicalSnapshot?.trend,
+				context.news.items.length,
+				context.degradedReasons.join("|"),
+			]),
+		),
+	];
+}
+
 function formatDegradedShort(reasons: string[]): string {
 	return reasons.length > 0 ? reasons.join("|") : "none";
 }
 
 function formatHealthShort(health: SourceHealth): string {
-	return `source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}`;
+	const configured = health.configured === undefined ? "" : `, configured=${health.configured}`;
+	const used = health.used === undefined ? "" : `, used=${health.used}`;
+	return `source=${health.source}, status=${health.status}, latestAt=${formatValue(health.latestAt)}${configured}${used}`;
+}
+
+function formatSourceHealthList(health: SourceHealth[]): string {
+	return health
+		.map((item) => {
+			const configured = item.configured === undefined ? "unknown" : String(item.configured);
+			const used = item.used === undefined ? "unknown" : String(item.used);
+			const reason = item.degradedReason ? `,reason=${item.degradedReason}` : "";
+			return `${item.source}=${item.status}(configured=${configured},used=${used}${reason})`;
+		})
+		.join(",");
 }
 
 function formatArtifact(artifact: MarketArtifact | undefined): string {
@@ -1271,11 +1368,13 @@ FINANCE AGENT MODE:
 - Do not invent prices, dates, financial metrics, filing facts, or news. If tool data is missing, say what is missing.
 - When using tool data, mention source/asOf/latestAt where available.
 - For finance work, default to a full research answer rather than a brief answer.
+- When a task includes a PDF path, PDF URL, downloaded report, filing PDF, investor deck, prospectus, or research report PDF, proactively use /skill:pdf-research if available before analyzing the document. Extract the PDF into artifacts, read summary.json first, and cite page numbers instead of writing ad hoc PDF parsing code.
 - Develop the analysis until the main drivers, evidence, uncertainty, and implications are clear; do not stop simply because one tool returned data.
 - Only be brief when the user explicitly asks for a quick take, short answer, one-liner, or no details.
 - Do not force a fixed answer template; choose the natural structure for the question.
+- For investment research, build an internal causal model before answering. A useful finance answer must make judgment calls, not just cover fields: identify what matters most, what is already obvious or priced in, why the obvious view may be wrong, which variables dominate the outcome, and what evidence would change the conclusion. Express this in the natural answer shape for the user's question, not as a mandatory framework.
 - For single-company equity research, company data is the center of the analysis: business model, revenue drivers, margins, cash generation, balance sheet, capital allocation, valuation, catalysts, and thesis-breaker risks come before chart discussion.
-- Treat technical analysis as a small auxiliary check, not the main research method. Do not anchor a buy/sell conclusion on trend, moving averages, RSI-like momentum, or recent price action when company fundamentals, valuation, or business data are available or missing.
+- Treat technical analysis as a small auxiliary check, not the main research method. Do not turn technical levels into the thesis or anchor a buy/sell conclusion on trend, moving averages, RSI-like momentum, or recent price action when company fundamentals, valuation, or business data are available or missing.
 - When finance_symbol_context returns companyData/fundamentals, use those fields explicitly. If SEC/company data is missing, stale, or too thin, say that this blocks or lowers confidence and identify the company data needed next instead of filling the gap with technicals.
 - For "why is X moving", premarket, after-hours, earnings reaction, or "why is SOXL down/up" questions, do attribution analysis, not just data retrieval. Build a time-aligned causal chain: move magnitude, when it started, directly affected symbol, related stocks/ETF/index exposure, same-window news/filings/earnings/guidance, macro/sector tape, and whether each link is confirmed, likely, or only correlated.
 - When explaining ETF or leveraged ETF moves, separate index/underlying move, daily leverage math, major constituent contribution, sector beta, and idiosyncratic component news. For SOXL, do not treat SOXL as a standalone company; reason through semiconductor/index and major holdings such as NVDA, AVGO, AMD, MU, AMAT, KLAC, etc. when relevant.

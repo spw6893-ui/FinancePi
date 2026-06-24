@@ -149,6 +149,38 @@ const newsPayload = {
 	],
 };
 
+const finnhubNewsPayload = [
+	{
+		id: 101,
+		headline: "Apple supplier demand improves",
+		source: "Finnhub Wire",
+		url: "https://finnhub.example/news/aapl-demand",
+		datetime: 1781827200,
+	},
+];
+
+const alphaVantageNewsPayload = {
+	feed: [
+		{
+			title: "Analysts discuss Apple services momentum",
+			source: "Alpha Wire",
+			url: "https://alpha.example/news/aapl-services",
+			time_published: "20260617T120000",
+			ticker_sentiment: [{ ticker: "AAPL", relevance_score: "1.000000" }],
+		},
+		{
+			title: "Form 6K unrelated company that only mentions Apple as a peer",
+			source: "Alpha Wire",
+			url: "https://alpha.example/news/unrelated-form-6k",
+			time_published: "20260618T120000",
+			ticker_sentiment: [
+				{ ticker: "SDM", relevance_score: "1.000000" },
+				{ ticker: "AAPL", relevance_score: "0.638521" },
+			],
+		},
+	],
+};
+
 const tickerMapPayload = {
 	0: { cik_str: 320193, ticker: "AAPL", title: "Apple Inc." },
 };
@@ -227,6 +259,7 @@ const alternativeRevenueFactsPayload = {
 describe("FinanceClient", () => {
 	it("builds a symbol context from quote, history, news and SEC facts", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -255,6 +288,7 @@ describe("FinanceClient", () => {
 
 	it("keeps context usable when an optional source fails", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -277,8 +311,135 @@ describe("FinanceClient", () => {
 		);
 	});
 
+	it("merges configured free news providers into one news result", async () => {
+		const requestedUrls: string[] = [];
+		const client = new FinanceClient({
+			env: {
+				FINNHUB_API_KEY: "finnhub-test-key",
+				ALPHA_VANTAGE_API_KEY: "alpha-test-key",
+			},
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				requestedUrls.push(text);
+				if (text.includes("/v1/finance/search")) return jsonResponse(newsPayload);
+				if (text.includes("finnhub.io/api/v1/company-news")) return jsonResponse(finnhubNewsPayload);
+				if (text.includes("alphavantage.co/query")) return jsonResponse(alphaVantageNewsPayload);
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const news = await client.getNews("aapl", 10);
+
+		expect(news.value.items.map((item) => item.source)).toEqual([
+			"yahoo_news",
+			"finnhub_company_news",
+			"alpha_vantage_news_sentiment",
+		]);
+		expect(news.value.items.map((item) => item.title)).not.toContain(
+			"Form 6K unrelated company that only mentions Apple as a peer",
+		);
+		expect(news.value.source).toBe("news_aggregate");
+		expect(news.value.latestAt).toBe("2026-06-20T00:00:00.000Z");
+		expect(news.value.sourceHealth).toEqual([
+			expect.objectContaining({ source: "yahoo_news", status: "ok", configured: true, used: true }),
+			expect.objectContaining({ source: "finnhub_company_news", status: "ok", configured: true, used: true }),
+			expect.objectContaining({
+				source: "alpha_vantage_news_sentiment",
+				status: "ok",
+				configured: true,
+				used: true,
+			}),
+		]);
+		expect(news.health).toEqual(
+			expect.objectContaining({ source: "news_aggregate", status: "ok", configured: true, used: true }),
+		);
+		expect(requestedUrls.some((url) => url.includes("token=finnhub-test-key"))).toBe(true);
+		expect(requestedUrls.some((url) => url.includes("apikey=alpha-test-key"))).toBe(true);
+	});
+
+	it("carries configured free news provider health into symbol context", async () => {
+		const client = new FinanceClient({
+			env: {
+				FINNHUB_API_KEY: "finnhub-test-key",
+				ALPHA_VANTAGE_API_KEY: "alpha-test-key",
+			},
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				if (text.includes("/v8/finance/chart")) return jsonResponse(chartPayload);
+				if (text.includes("/v1/finance/search")) return jsonResponse(newsPayload);
+				if (text.includes("finnhub.io/api/v1/company-news")) return jsonResponse(finnhubNewsPayload);
+				if (text.includes("alphavantage.co/query")) return jsonResponse(alphaVantageNewsPayload);
+				if (text.includes("/files/company_tickers.json")) return jsonResponse(tickerMapPayload);
+				if (text.includes("/api/xbrl/companyfacts/")) return jsonResponse(factsPayload);
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const context = await client.getSymbolContext("AAPL");
+
+		expect(context.news.items).toHaveLength(3);
+		expect(context.sourceHealth).toContainEqual(
+			expect.objectContaining({ source: "finnhub_company_news", status: "ok", configured: true, used: true }),
+		);
+		expect(context.sourceHealth).toContainEqual(
+			expect.objectContaining({
+				source: "alpha_vantage_news_sentiment",
+				status: "ok",
+				configured: true,
+				used: true,
+			}),
+		);
+	});
+
+	it("adds a FRED macro snapshot to market briefs when configured", async () => {
+		const fredValues: Record<string, string> = {
+			DGS10: "4.25",
+			DGS2: "3.80",
+			FEDFUNDS: "4.33",
+			BAMLH0A0HYM2: "3.15",
+		};
+		const client = new FinanceClient({
+			env: { FRED_API_KEY: "fred-test-key" },
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				if (text.includes("/v8/finance/chart")) return jsonResponse(chartPayload);
+				if (text.includes("/v1/finance/search")) return jsonResponse(newsPayload);
+				if (text.includes("/files/company_tickers.json")) return jsonResponse(tickerMapPayload);
+				if (text.includes("/api/xbrl/companyfacts/")) return jsonResponse(factsPayload);
+				if (text.includes("api.stlouisfed.org/fred/series/observations")) {
+					const requestUrl = new URL(text);
+					const seriesId = requestUrl.searchParams.get("series_id") ?? "";
+					return jsonResponse({ observations: [{ date: "2026-06-19", value: fredValues[seriesId] ?? "." }] });
+				}
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const brief = await client.getMarketBrief(["AAPL"]);
+
+		expect(brief.macro.observations).toEqual([
+			expect.objectContaining({ seriesId: "DGS10", label: "US 10Y Treasury yield", value: 4.25 }),
+			expect.objectContaining({ seriesId: "DGS2", label: "US 2Y Treasury yield", value: 3.8 }),
+			expect.objectContaining({ seriesId: "FEDFUNDS", label: "Effective federal funds rate", value: 4.33 }),
+			expect.objectContaining({
+				seriesId: "BAMLH0A0HYM2",
+				label: "US high yield option-adjusted spread",
+				value: 3.15,
+			}),
+		]);
+		expect(brief.macro.latestAt).toBe("2026-06-19");
+		expect(brief.sourceHealth).toContainEqual(
+			expect.objectContaining({ source: "fred:DGS10", status: "ok", configured: true, used: true }),
+		);
+		expect(brief.degradedReasons).toEqual([]);
+	});
+
 	it("uses free chart latest close for quotes without calling Yahoo quote", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -299,6 +460,7 @@ describe("FinanceClient", () => {
 
 	it("keeps quote day change based on the previous daily bar when available", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -315,6 +477,7 @@ describe("FinanceClient", () => {
 
 	it("uses Yahoo chart metadata for chart-only index quotes", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -337,6 +500,7 @@ describe("FinanceClient", () => {
 
 	it("falls back to short Yahoo chart ranges when a symbol has limited daily history", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);
@@ -365,6 +529,7 @@ describe("FinanceClient", () => {
 	it("uses a SEC-friendly user agent with contact information", async () => {
 		let secUserAgent = "";
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url, init) => {
 				const text = String(url);
@@ -385,6 +550,7 @@ describe("FinanceClient", () => {
 
 	it("uses modern SEC revenue concepts before stale legacy revenue fields", async () => {
 		const client = new FinanceClient({
+			env: {},
 			now: () => new Date("2026-06-20T00:00:00Z"),
 			fetch: async (url) => {
 				const text = String(url);

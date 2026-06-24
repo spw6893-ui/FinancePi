@@ -50,6 +50,10 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("Use sourced market data before making claims");
 			expect(prompt).toContain("After a market data tool returns, pause and identify data gaps");
+			expect(prompt).toContain("build an internal causal model before answering");
+			expect(prompt).toContain("make judgment calls rather than listing every available fact");
+			expect(prompt).toContain("why the obvious view may be wrong");
+			expect(prompt).toContain("what evidence would change the conclusion");
 			expect(prompt).toContain("read it or use code/shell to compute the needed statistics");
 			expect(prompt).toContain("Avoid redundant tool calls");
 			expect(prompt).toContain("Do not invent prices, dates, financial metrics, filing facts, news, funding");

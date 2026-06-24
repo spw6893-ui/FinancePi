@@ -132,7 +132,30 @@ describe("finance tool result content", () => {
 					asOf: "2026-03-01",
 					source: "sec_companyfacts",
 				},
-				sourceHealth: [{ source: "test_quote", status: "ok", latestAt: "2026-06-20T00:00:00.000Z" }],
+				sourceHealth: [
+					{
+						source: "test_quote",
+						status: "ok",
+						latestAt: "2026-06-20T00:00:00.000Z",
+						configured: true,
+						used: true,
+					},
+					{
+						source: "finnhub_company_news",
+						status: "ok",
+						latestAt: "2026-06-20T00:00:00.000Z",
+						configured: true,
+						used: true,
+					},
+					{
+						source: "alpha_vantage_news_sentiment",
+						status: "degraded",
+						latestAt: "2026-06-20T00:00:00.000Z",
+						configured: true,
+						used: false,
+						degradedReason: "alpha_vantage_news_http_429",
+					},
+				],
 				degradedReasons: [],
 				asOf: "2026-06-20T00:00:00.000Z",
 			},
@@ -150,6 +173,9 @@ describe("finance tool result content", () => {
 			expect(text).toContain("priceHistoryBars=2");
 			expect(text).toContain("newsItems=1");
 			expect(text).toContain("companyData: companyName=NVIDIA Corporation");
+			expect(text).toContain(
+				"sources: test_quote=ok(configured=true,used=true),finnhub_company_news=ok(configured=true,used=true),alpha_vantage_news_sentiment=degraded(configured=true,used=false,reason=alpha_vantage_news_http_429)",
+			);
 			expect(text).toContain("revenue=Revenue=130497000000 USD");
 			expect(text).toContain("netIncome=Net income=72880000000 USD");
 			expect(text).toContain("concept=RevenueFromContractWithCustomerExcludingAssessedTax");
@@ -166,12 +192,101 @@ describe("finance tool result content", () => {
 			expect(artifactPath).toBeTruthy();
 			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
 			expect(csv).toContain("source_health");
+			expect(csv).toContain(
+				"source_health,NA,NA,NA,NA,NA,NA,NA,NA,NA,alpha_vantage_news_sentiment,degraded,2026-06-20T00:00:00.000Z,alpha_vantage_news_http_429",
+			);
 			expect(csv).toContain("fundamental");
 			expect(csv).toContain(
 				"Revenue,130497000000,USD,2026,FY,2025-02-01,2026-01-31,CY2025,10-K,2026-03-01,NVIDIA Corporation,0001045810",
 			);
 			expect(csv).toContain("bar,2026-06-19");
 			expect(csv).toContain("news,NA,NA,NA,NA,NA,NA,2026-06-20T00:00:00.000Z,Test,Nvidia headline,test_news");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("summarizes market brief macro and provider health", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-brief-artifact-"));
+		const result = await financeTextResult(
+			"Finance market brief",
+			{
+				ok: true,
+				symbols: ["AAPL"],
+				contexts: [
+					{
+						ok: true,
+						symbol: "AAPL",
+						market: "US",
+						quote: null,
+						history: { symbol: "AAPL", market: "US", bars: [], latestAt: null, source: "yahoo_chart" },
+						news: {
+							symbol: "AAPL",
+							market: "US",
+							items: [],
+							latestAt: null,
+							source: "yahoo_news",
+							sourceHealth: [],
+						},
+						technicalSnapshot: null,
+						fundamentals: null,
+						sourceHealth: [],
+						degradedReasons: [],
+						asOf: "2026-06-20T00:00:00.000Z",
+					},
+				],
+				macro: {
+					observations: [
+						{
+							seriesId: "DGS10",
+							label: "US 10Y Treasury yield",
+							value: 4.25,
+							unit: "percent",
+							date: "2026-06-19",
+							source: "fred",
+						},
+					],
+					latestAt: "2026-06-19",
+					source: "fred",
+					sourceHealth: [
+						{
+							source: "fred:DGS10",
+							status: "ok",
+							latestAt: "2026-06-19",
+							configured: true,
+							used: true,
+						},
+					],
+					degradedReasons: [],
+				},
+				asOf: "2026-06-20T00:00:00.000Z",
+				sourceHealth: [
+					{
+						source: "fred:DGS10",
+						status: "ok",
+						latestAt: "2026-06-19",
+						configured: true,
+						used: true,
+					},
+				],
+				degradedReasons: [],
+			},
+			{
+				cwd,
+			} as never,
+		);
+
+		try {
+			const text = result.content[0]?.text ?? "";
+
+			expect(text).toContain("macro: US 10Y Treasury yield=4.25 percent asOf=2026-06-19");
+			expect(text).toContain("sources: fred:DGS10=ok(configured=true,used=true)");
+
+			const artifactPath = text.match(/\.pi\/artifacts\/market-data\/\S+\.csv/)?.[0];
+			expect(artifactPath).toBeTruthy();
+			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
+			expect(csv).toContain("macro,DGS10,US 10Y Treasury yield,4.25,percent,2026-06-19,fred");
+			expect(csv).toContain("source_health,fred:DGS10,ok,2026-06-19,NA,true,true");
 		} finally {
 			await rm(cwd, { recursive: true, force: true });
 		}

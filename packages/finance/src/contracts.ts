@@ -5,6 +5,8 @@ export interface SourceHealth {
 	status: "ok" | "degraded";
 	latestAt?: string;
 	degradedReason?: string;
+	configured?: boolean;
+	used?: boolean;
 }
 
 export interface SourceResult<T> {
@@ -60,6 +62,24 @@ export interface NewsResult {
 	items: NewsItem[];
 	latestAt: string | null;
 	source: string;
+	sourceHealth?: SourceHealth[];
+}
+
+export interface MacroObservation {
+	seriesId: string;
+	label: string;
+	value: number | null;
+	unit: string;
+	date: string;
+	source: string;
+}
+
+export interface MacroSnapshot {
+	observations: MacroObservation[];
+	latestAt: string | null;
+	source: string;
+	sourceHealth: SourceHealth[];
+	degradedReasons: string[];
 }
 
 export interface FundamentalFact {
@@ -136,6 +156,7 @@ export interface MarketBrief {
 	ok: true;
 	symbols: string[];
 	contexts: SymbolContext[];
+	macro: MacroSnapshot;
 	asOf: string;
 	sourceHealth: SourceHealth[];
 	degradedReasons: string[];
@@ -145,6 +166,7 @@ export interface FinanceClientOptions {
 	fetch?: typeof fetch;
 	now?: () => Date;
 	userAgent?: string;
+	env?: Record<string, string | undefined>;
 }
 
 export interface SymbolContextOptions {

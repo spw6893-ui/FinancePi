@@ -2,6 +2,8 @@
 
 Use these as optional lenses, not a fixed template. Pick only the lenses that matter for the user's question.
 
+Before writing, compress the relevant lenses into your own causal model: what drives the asset, what the market is likely underwriting, what could surprise consensus, which variable has the most leverage on value, and what would falsify the view. Do not output every lens just because it is listed here.
+
 ## Single stocks
 
 - Business quality: revenue drivers, unit economics, margins, moat, customer concentration.

@@ -4,11 +4,14 @@ import type {
 	FundamentalFact,
 	Fundamentals,
 	History,
+	MacroObservation,
+	MacroSnapshot,
 	MarketBrief,
 	NewsItem,
 	NewsResult,
 	PriceBar,
 	Quote,
+	SourceHealth,
 	SourceResult,
 	SymbolContext,
 	SymbolContextOptions,
@@ -28,6 +31,16 @@ const YAHOO_QUERY_1 = "https://query1.finance.yahoo.com";
 const YAHOO_QUERY_2 = "https://query2.finance.yahoo.com";
 const SEC_BASE = "https://data.sec.gov";
 const SEC_FILES = "https://www.sec.gov";
+const FINNHUB_BASE = "https://finnhub.io";
+const ALPHA_VANTAGE_BASE = "https://www.alphavantage.co";
+const FRED_BASE = "https://api.stlouisfed.org";
+
+const FRED_MACRO_SERIES = [
+	{ seriesId: "DGS10", label: "US 10Y Treasury yield", unit: "percent" },
+	{ seriesId: "DGS2", label: "US 2Y Treasury yield", unit: "percent" },
+	{ seriesId: "FEDFUNDS", label: "Effective federal funds rate", unit: "percent" },
+	{ seriesId: "BAMLH0A0HYM2", label: "US high yield option-adjusted spread", unit: "percent" },
+];
 
 interface YahooChartMeta {
 	currency?: string;
@@ -69,6 +82,30 @@ function stringOrUndefined(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	return trimmed || undefined;
+}
+
+function isoFromAlphaVantageTimestamp(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/.exec(value.trim());
+	if (!match) return undefined;
+	return new Date(
+		Date.UTC(
+			Number(match[1]),
+			Number(match[2]) - 1,
+			Number(match[3]),
+			Number(match[4]),
+			Number(match[5]),
+			Number(match[6]),
+		),
+	).toISOString();
+}
+
+function latestIso(items: Array<{ publishedAt?: string }>): string | null {
+	return (
+		items
+			.flatMap((item) => (item.publishedAt ? [item.publishedAt] : []))
+			.sort((left, right) => right.localeCompare(left))[0] ?? null
+	);
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -137,12 +174,14 @@ export class FinanceClient {
 	private readonly fetchImpl: typeof fetch;
 	private readonly now: () => Date;
 	private readonly userAgent: string;
+	private readonly env: Record<string, string | undefined>;
 	private secTickerMap?: Map<string, SecTickerEntry>;
 
 	constructor(options: FinanceClientOptions = {}) {
 		this.fetchImpl = options.fetch ?? fetch;
 		this.now = options.now ?? (() => new Date());
 		this.userAgent = options.userAgent ?? "pi-finance-agent/0.1 contact=agent-pi@example.invalid";
+		this.env = options.env ?? process.env;
 	}
 
 	async getQuote(symbol: string): Promise<SourceResult<Quote | null>> {
@@ -317,15 +356,52 @@ export class FinanceClient {
 
 	async getNews(symbol: string, limit = 10): Promise<SourceResult<NewsResult>> {
 		const normalized = normalizeSymbol(symbol);
-		const url = `${YAHOO_QUERY_2}/v1/finance/search?q=${encodeURIComponent(normalized)}&newsCount=${limit}`;
 		const empty: NewsResult = {
 			symbol: normalized,
 			market: inferMarketCode(normalized),
 			items: [],
 			latestAt: null,
-			source: "yahoo_news",
+			source: "news_aggregate",
+			sourceHealth: [],
 		};
+		const providerResults = await Promise.all([
+			this.getYahooNews(normalized, limit),
+			this.getFinnhubNews(normalized, limit),
+			this.getAlphaVantageNews(normalized, limit),
+		]);
+		const configuredResults = providerResults.filter((result) => result.health.configured !== false);
+		const sourceHealth = configuredResults.map((result) => result.health);
+		const items = providerResults
+			.flatMap((result) => result.value)
+			.sort((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? ""))
+			.slice(0, limit);
+		const latestAt = latestIso(items);
+		const degradedReasons = configuredResults.flatMap((result) =>
+			result.degradedReason ? [result.degradedReason] : [],
+		);
+		const status = degradedReasons.length > 0 || items.length === 0 ? "degraded" : "ok";
+		return {
+			value: {
+				...empty,
+				items,
+				latestAt,
+				sourceHealth,
+			},
+			health: {
+				source: "news_aggregate",
+				status,
+				latestAt: latestAt ?? this.now().toISOString(),
+				degradedReason: status === "degraded" ? (degradedReasons[0] ?? "news_unavailable") : undefined,
+				configured: true,
+				used: items.length > 0,
+			},
+			degradedReason: degradedReasons[0],
+		};
+	}
+
+	private async getYahooNews(normalized: string, limit: number): Promise<SourceResult<NewsItem[]>> {
 		try {
+			const url = `${YAHOO_QUERY_2}/v1/finance/search?q=${encodeURIComponent(normalized)}&newsCount=${limit}`;
 			const payload = await this.fetchJson(url, "yahoo_news");
 			const items: NewsItem[] = asArray(asRecord(payload).news)
 				.slice(0, limit)
@@ -340,13 +416,92 @@ export class FinanceClient {
 						source: "yahoo_news",
 					};
 				});
-			const latestAt = items[0]?.publishedAt ?? null;
+			const latestAt = latestIso(items);
 			return {
-				value: { ...empty, items, latestAt },
-				health: { source: "yahoo_news", status: "ok", latestAt: latestAt ?? undefined },
+				value: items,
+				health: {
+					source: "yahoo_news",
+					status: "ok",
+					latestAt: latestAt ?? undefined,
+					configured: true,
+					used: items.length > 0,
+				},
 			};
 		} catch (error) {
-			return this.degraded(empty, "yahoo_news", this.errorReason("news", error));
+			return this.degraded([], "yahoo_news", this.errorReason("news", error));
+		}
+	}
+
+	private async getFinnhubNews(normalized: string, limit: number): Promise<SourceResult<NewsItem[]>> {
+		const token = this.envValue("FINNHUB_API_KEY");
+		if (!token) return this.notConfigured([], "finnhub_company_news", "finnhub_api_key_missing");
+		try {
+			const to = this.dateString(this.now());
+			const from = this.dateString(new Date(this.now().getTime() - 14 * 24 * 60 * 60 * 1000));
+			const url = `${FINNHUB_BASE}/api/v1/company-news?symbol=${encodeURIComponent(normalized)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&token=${encodeURIComponent(token)}`;
+			const payload = await this.fetchJson(url, "finnhub_company_news");
+			const items: NewsItem[] = asArray(payload)
+				.slice(0, limit)
+				.map((raw) => {
+					const item = asRecord(raw);
+					return {
+						id: typeof item.id === "number" ? String(item.id) : stringOrUndefined(item.id),
+						title: stringOrUndefined(item.headline) ?? "Untitled news item",
+						publisher: stringOrUndefined(item.source),
+						url: stringOrUndefined(item.url),
+						publishedAt: isoFromUnixSeconds(item.datetime),
+						source: "finnhub_company_news",
+					};
+				});
+			const latestAt = latestIso(items);
+			return {
+				value: items,
+				health: {
+					source: "finnhub_company_news",
+					status: "ok",
+					latestAt: latestAt ?? undefined,
+					configured: true,
+					used: items.length > 0,
+				},
+			};
+		} catch (error) {
+			return this.degraded([], "finnhub_company_news", this.errorReason("finnhub_news", error));
+		}
+	}
+
+	private async getAlphaVantageNews(normalized: string, limit: number): Promise<SourceResult<NewsItem[]>> {
+		const apiKey = this.envValue("ALPHA_VANTAGE_API_KEY");
+		if (!apiKey) return this.notConfigured([], "alpha_vantage_news_sentiment", "alpha_vantage_api_key_missing");
+		try {
+			const url = `${ALPHA_VANTAGE_BASE}/query?function=NEWS_SENTIMENT&tickers=${encodeURIComponent(normalized)}&apikey=${encodeURIComponent(apiKey)}`;
+			const payload = await this.fetchJson(url, "alpha_vantage_news_sentiment");
+			const items: NewsItem[] = asArray(asRecord(payload).feed)
+				.filter((raw) => alphaVantageItemMatchesSymbol(raw, normalized))
+				.slice(0, limit)
+				.map((raw) => {
+					const item = asRecord(raw);
+					return {
+						id: stringOrUndefined(item.url),
+						title: stringOrUndefined(item.title) ?? "Untitled news item",
+						publisher: stringOrUndefined(item.source),
+						url: stringOrUndefined(item.url),
+						publishedAt: isoFromAlphaVantageTimestamp(item.time_published),
+						source: "alpha_vantage_news_sentiment",
+					};
+				});
+			const latestAt = latestIso(items);
+			return {
+				value: items,
+				health: {
+					source: "alpha_vantage_news_sentiment",
+					status: "ok",
+					latestAt: latestAt ?? undefined,
+					configured: true,
+					used: items.length > 0,
+				},
+			};
+		} catch (error) {
+			return this.degraded([], "alpha_vantage_news_sentiment", this.errorReason("alpha_vantage_news", error));
 		}
 	}
 
@@ -422,8 +577,8 @@ export class FinanceClient {
 			this.getNews(normalized, options.newsLimit ?? 10),
 			this.getSecFacts(normalized),
 		]);
-		const sourceResults = [quote, history, news, fundamentals];
-		const degradedReasons = sourceResults.flatMap((result) => (result.degradedReason ? [result.degradedReason] : []));
+		const sourceHealth = [quote.health, history.health, ...sourceHealthForNews(news), fundamentals.health];
+		const degradedReasons = sourceHealth.flatMap((health) => (health.degradedReason ? [health.degradedReason] : []));
 		const technicalSnapshot =
 			history.value.bars.length > 0
 				? buildTechnicalSnapshot(normalized, history.value.bars, history.value.interval ?? "daily")
@@ -438,7 +593,7 @@ export class FinanceClient {
 			news: news.value,
 			technicalSnapshot,
 			fundamentals: fundamentals.value,
-			sourceHealth: sourceResults.map((result) => result.health),
+			sourceHealth,
 			degradedReasons,
 			asOf: this.now().toISOString(),
 		};
@@ -457,14 +612,15 @@ export class FinanceClient {
 	}
 
 	async getMarketBrief(symbols: string[], options: SymbolContextOptions = {}): Promise<MarketBrief> {
-		const comparison = await this.compareSymbols(symbols, options);
+		const [comparison, macro] = await Promise.all([this.compareSymbols(symbols, options), this.getMacroSnapshot()]);
 		return {
 			ok: true,
 			symbols: comparison.symbols,
 			contexts: comparison.contexts,
+			macro,
 			asOf: comparison.asOf,
-			sourceHealth: comparison.contexts.flatMap((context) => context.sourceHealth),
-			degradedReasons: comparison.degradedReasons,
+			sourceHealth: [...comparison.contexts.flatMap((context) => context.sourceHealth), ...macro.sourceHealth],
+			degradedReasons: [...comparison.degradedReasons, ...macro.degradedReasons],
 		};
 	}
 
@@ -476,9 +632,95 @@ export class FinanceClient {
 				status: "degraded",
 				latestAt: this.now().toISOString(),
 				degradedReason: reason,
+				configured: true,
+				used: false,
 			},
 			degradedReason: reason,
 		};
+	}
+
+	private notConfigured<T>(value: T, source: string, reason: string): SourceResult<T> {
+		return {
+			value,
+			health: {
+				source,
+				status: "degraded",
+				latestAt: this.now().toISOString(),
+				degradedReason: reason,
+				configured: false,
+				used: false,
+			},
+			degradedReason: reason,
+		};
+	}
+
+	private async getMacroSnapshot(): Promise<MacroSnapshot> {
+		const apiKey = this.envValue("FRED_API_KEY");
+		if (!apiKey) {
+			return {
+				observations: [],
+				latestAt: null,
+				source: "fred",
+				sourceHealth: [],
+				degradedReasons: [],
+			};
+		}
+		const results = await Promise.all(
+			FRED_MACRO_SERIES.map(async (series) => this.getFredObservation(series, apiKey)),
+		);
+		const observations = results.flatMap((result) => (result.value ? [result.value] : []));
+		const sourceHealth = results.map((result) => result.health);
+		return {
+			observations,
+			latestAt: observations.map((item) => item.date).sort((left, right) => right.localeCompare(left))[0] ?? null,
+			source: "fred",
+			sourceHealth,
+			degradedReasons: results.flatMap((result) => (result.degradedReason ? [result.degradedReason] : [])),
+		};
+	}
+
+	private async getFredObservation(
+		series: { seriesId: string; label: string; unit: string },
+		apiKey: string,
+	): Promise<SourceResult<MacroObservation | null>> {
+		const source = `fred:${series.seriesId}`;
+		try {
+			const url = `${FRED_BASE}/fred/series/observations?series_id=${encodeURIComponent(series.seriesId)}&api_key=${encodeURIComponent(apiKey)}&file_type=json&sort_order=desc&limit=1`;
+			const payload = await this.fetchJson(url, source);
+			const observation = asRecord(asArray(asRecord(payload).observations)[0]);
+			const date = stringOrUndefined(observation.date);
+			if (!date) return this.degraded(null, source, `${reasonPart(series.seriesId)}_fred_observation_missing`);
+			return {
+				value: {
+					seriesId: series.seriesId,
+					label: series.label,
+					value: numberFromFredValue(observation.value),
+					unit: series.unit,
+					date,
+					source: "fred",
+				},
+				health: {
+					source,
+					status: "ok",
+					latestAt: date,
+					configured: true,
+					used: true,
+				},
+			};
+		} catch (error) {
+			return this.degraded(null, source, this.errorReason(`fred_${reasonPart(series.seriesId)}`, error));
+		}
+	}
+
+	private envValue(name: string): string | undefined {
+		const value = this.env[name];
+		if (typeof value !== "string") return undefined;
+		const trimmed = value.trim();
+		return trimmed || undefined;
+	}
+
+	private dateString(date: Date): string {
+		return date.toISOString().slice(0, 10);
 	}
 
 	private async getSecTickerMap(): Promise<Map<string, SecTickerEntry>> {
@@ -522,4 +764,26 @@ function reasonPart(value: string): string {
 			.replace(/^_+|_+$/g, "")
 			.slice(0, 32) || "unknown"
 	);
+}
+
+function numberFromFredValue(value: unknown): number | null {
+	if (typeof value === "number") return Number.isFinite(value) ? value : null;
+	if (typeof value !== "string") return null;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sourceHealthForNews(news: SourceResult<NewsResult>): SourceHealth[] {
+	return news.value.sourceHealth?.length ? news.value.sourceHealth : [news.health];
+}
+
+function alphaVantageItemMatchesSymbol(raw: unknown, normalized: string): boolean {
+	const sentiments = asArray(asRecord(raw).ticker_sentiment);
+	if (sentiments.length === 0) return true;
+	return sentiments.some((sentiment) => {
+		const item = asRecord(sentiment);
+		if (normalizeSymbol(stringOrUndefined(item.ticker) ?? "") !== normalized) return false;
+		const relevance = numberFromFredValue(item.relevance_score);
+		return relevance === null || relevance >= 0.8;
+	});
 }

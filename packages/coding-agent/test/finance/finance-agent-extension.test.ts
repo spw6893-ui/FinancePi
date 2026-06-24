@@ -73,6 +73,12 @@ describe("finance agent extension", () => {
 		);
 		expect(output?.systemPrompt).toContain("company data is the center of the analysis");
 		expect(output?.systemPrompt).toContain("Treat technical analysis as a small auxiliary check");
+		expect(output?.systemPrompt).toContain("build an internal causal model before answering");
+		expect(output?.systemPrompt).toContain("A useful finance answer must make judgment calls");
+		expect(output?.systemPrompt).toContain("why the obvious view may be wrong");
+		expect(output?.systemPrompt).toContain("which variables dominate the outcome");
+		expect(output?.systemPrompt).toContain("what evidence would change the conclusion");
+		expect(output?.systemPrompt).toContain("Do not turn technical levels into the thesis");
 		expect(output?.systemPrompt).toContain("When finance_symbol_context returns companyData/fundamentals");
 		expect(output?.systemPrompt).toContain("do attribution analysis, not just data retrieval");
 		expect(output?.systemPrompt).toContain("If no definitive headline explains a move");

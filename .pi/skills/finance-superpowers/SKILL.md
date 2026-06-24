@@ -16,6 +16,8 @@ This is not a fixed report template. Let the analysis shape emerge from the asse
 - Ask one high-leverage question at a time only when the answer materially changes the model, scope, risk budget, or next step.
 - If the user asks "from what angles should I analyze this", propose the analysis system and explain why each lens matters; do not force headings.
 - If multiple analysis paths are plausible, briefly compare them and choose the smallest useful path.
+- Build your own causal model before answering. Do not just enumerate facts, lenses, or risks; decide what matters most, what is consensus, what is misunderstood, which variables dominate the outcome, and what evidence would change the conclusion.
+- Let the final answer emerge naturally. The user should feel the model behind the judgment, not see a rigid checklist.
 - For single-company stocks, make company data the spine of the work: business model, revenue drivers, unit economics, margins, cash generation, balance sheet, capital allocation, valuation, catalysts, and thesis-breaker risks.
 - Treat technical analysis as a small auxiliary check unless the user explicitly asks for a trading setup.
 - For sudden move, premarket, after-hours, or "why is this down/up" questions, do attribution instead of reporting data: align timing, move size, direct catalyst, related symbols, ETF/index exposure, sector tape, confidence, and missing evidence.

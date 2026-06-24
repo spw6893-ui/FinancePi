@@ -1,0 +1,5 @@
+interface:
+  display_name: "PDF Research"
+  short_description: "Extract and inspect PDF text/tables"
+  default_prompt: "Use $pdf-research to extract this PDF and summarize the key evidence with page citations."
+
