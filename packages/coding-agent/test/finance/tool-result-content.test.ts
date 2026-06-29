@@ -206,6 +206,111 @@ describe("finance tool result content", () => {
 		}
 	});
 
+	it("summarizes options positioning and writes strike-level artifact rows", async () => {
+		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-options-artifact-"));
+		const result = await financeTextResult(
+			"Finance options positioning",
+			{
+				value: {
+					symbol: "NVDA",
+					market: "US",
+					underlyingPrice: 100,
+					asOf: "2026-06-20T00:00:00.000Z",
+					expirationDates: ["2026-07-17"],
+					expirations: [
+						{
+							expirationDate: "2026-07-17",
+							callVolume: 350,
+							putVolume: 380,
+							callOpenInterest: 3200,
+							putOpenInterest: 3400,
+							volumePutCallRatio: 1.0857142857142856,
+							openInterestPutCallRatio: 1.0625,
+							callWall: { strike: 105, callOpenInterest: 2200, putOpenInterest: 0, totalOpenInterest: 2200 },
+							putWall: { strike: 95, callOpenInterest: 0, putOpenInterest: 2500, totalOpenInterest: 2500 },
+							maxPain: { strike: 100, callOpenInterest: 1000, putOpenInterest: 900, totalOpenInterest: 1900 },
+							estimatedNetGammaExposure: 12345,
+							estimatedGrossGammaExposure: 23456,
+							gammaByStrike: [
+								{
+									strike: 100,
+									callGammaExposure: 10000,
+									putGammaExposure: -8000,
+									netGammaExposure: 2000,
+									grossGammaExposure: 18000,
+									callOpenInterest: 1000,
+									putOpenInterest: 900,
+									totalOpenInterest: 1900,
+								},
+							],
+							contracts: 4,
+						},
+					],
+					summary: {
+						callVolume: 350,
+						putVolume: 380,
+						callOpenInterest: 3200,
+						putOpenInterest: 3400,
+						volumePutCallRatio: 1.0857142857142856,
+						openInterestPutCallRatio: 1.0625,
+						callWall: { strike: 105, callOpenInterest: 2200, putOpenInterest: 0, totalOpenInterest: 2200 },
+						putWall: { strike: 95, callOpenInterest: 0, putOpenInterest: 2500, totalOpenInterest: 2500 },
+						maxPain: { strike: 100, callOpenInterest: 1000, putOpenInterest: 900, totalOpenInterest: 1900 },
+						estimatedNetGammaExposure: 12345,
+						estimatedGrossGammaExposure: 23456,
+						gammaByStrike: [
+							{
+								strike: 100,
+								callGammaExposure: 10000,
+								putGammaExposure: -8000,
+								netGammaExposure: 2000,
+								grossGammaExposure: 18000,
+								callOpenInterest: 1000,
+								putOpenInterest: 900,
+								totalOpenInterest: 1900,
+							},
+						],
+						contracts: 4,
+					},
+					source: "yahoo_options",
+					limitations: ["estimated_gamma_not_dealer_book", "open_interest_is_delayed"],
+				},
+				health: {
+					source: "yahoo_options",
+					status: "ok",
+					latestAt: "2026-06-20T00:00:00.000Z",
+				},
+			},
+			{
+				cwd,
+			} as never,
+		);
+
+		try {
+			const text = result.content[0]?.text ?? "";
+
+			expect(text).toContain("options: symbol=NVDA");
+			expect(text).toContain("putCallVolume=1.0857142857142856");
+			expect(text).toContain("putCallOpenInterest=1.0625");
+			expect(text).toContain("callWall=105");
+			expect(text).toContain("putWall=95");
+			expect(text).toContain("maxPain=100");
+			expect(text).toContain("estimatedNetGammaExposure=12345");
+			expect(text).toContain("limitations=estimated_gamma_not_dealer_book|open_interest_is_delayed");
+
+			const artifactPath = text.match(/\.pi\/artifacts\/market-data\/\S+\.csv/)?.[0];
+			expect(artifactPath).toBeTruthy();
+			const csv = await readFile(join(cwd, artifactPath ?? ""), "utf8");
+			expect(csv).toContain(
+				"section,expirationDate,strike,callOpenInterest,putOpenInterest,totalOpenInterest,callGammaExposure,putGammaExposure,netGammaExposure,grossGammaExposure,metric,value",
+			);
+			expect(csv).toContain("gamma,2026-07-17,100,1000,900,1900,10000,-8000,2000,18000");
+			expect(csv).toContain("summary,NA,105,2200,0,2200");
+		} finally {
+			await rm(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("summarizes market brief macro and provider health", async () => {
 		const cwd = await mkdtemp(join(tmpdir(), "pi-finance-brief-artifact-"));
 		const result = await financeTextResult(

@@ -9,6 +9,12 @@ import type {
 	MarketBrief,
 	NewsItem,
 	NewsResult,
+	OptionGammaByStrike,
+	OptionsExpirationPositioning,
+	OptionsPositioning,
+	OptionsPositioningOptions,
+	OptionsPositioningSummary,
+	OptionWall,
 	PriceBar,
 	Quote,
 	SourceHealth,
@@ -34,6 +40,9 @@ const SEC_FILES = "https://www.sec.gov";
 const FINNHUB_BASE = "https://finnhub.io";
 const ALPHA_VANTAGE_BASE = "https://www.alphavantage.co";
 const FRED_BASE = "https://api.stlouisfed.org";
+const CBOE_OPTIONS_BASE = "https://cdn.cboe.com/api/global/delayed_quotes/options";
+const YAHOO_USER_AGENT =
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 const FRED_MACRO_SERIES = [
 	{ seriesId: "DGS10", label: "US 10Y Treasury yield", unit: "percent" },
@@ -61,6 +70,38 @@ interface YahooChartData {
 	latestAt: string | null;
 	range: string;
 	interval: string;
+}
+
+type OptionType = "call" | "put";
+
+interface ParsedOptionContract {
+	optionType: OptionType;
+	contractSymbol?: string;
+	expirationUnix: number;
+	expirationDate: string;
+	strike: number;
+	volume: number | null;
+	openInterest: number | null;
+	impliedVolatility: number | null;
+}
+
+interface YahooOptionsExpirationData {
+	expirationUnix: number;
+	expirationDate: string;
+	contracts: ParsedOptionContract[];
+}
+
+interface YahooOptionsChainData {
+	symbol: string;
+	underlyingPrice: number | null;
+	asOf: string;
+	expirationDates: number[];
+	option?: YahooOptionsExpirationData;
+}
+
+interface YahooAuth {
+	cookie: string;
+	crumb: string;
 }
 
 function isoFromUnixSeconds(value: unknown): string | undefined {
@@ -98,6 +139,13 @@ function isoFromAlphaVantageTimestamp(value: unknown): string | undefined {
 			Number(match[6]),
 		),
 	).toISOString();
+}
+
+function isoFromCboeTimestamp(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().replace(" ", "T");
+	const timestamp = Date.parse(`${normalized.endsWith("Z") ? normalized : `${normalized}Z`}`);
+	return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
 }
 
 function latestIso(items: Array<{ publishedAt?: string }>): string | null {
@@ -176,6 +224,7 @@ export class FinanceClient {
 	private readonly userAgent: string;
 	private readonly env: Record<string, string | undefined>;
 	private secTickerMap?: Map<string, SecTickerEntry>;
+	private yahooOptionsAuth?: YahooAuth;
 
 	constructor(options: FinanceClientOptions = {}) {
 		this.fetchImpl = options.fetch ?? fetch;
@@ -279,6 +328,75 @@ export class FinanceClient {
 		};
 	}
 
+	private async fetchYahooOptionsChain(normalized: string, expirationUnix?: number): Promise<YahooOptionsChainData> {
+		const payload = await this.fetchYahooOptionsJson(normalized, expirationUnix);
+		const optionChain = asRecord(asRecord(payload).optionChain);
+		const error = optionChain.error;
+		if (error) {
+			const errorRecord = asRecord(error);
+			const code = stringOrUndefined(errorRecord.code) ?? "error";
+			throw new Error(`yahoo_options_${code}`);
+		}
+		const result = asRecord(asArray(optionChain.result)[0]);
+		const quote = asRecord(result.quote);
+		const expirationDates = asArray(result.expirationDates)
+			.flatMap((value) => (typeof value === "number" && Number.isFinite(value) ? [value] : []))
+			.sort((left, right) => left - right);
+		const rawOption = asRecord(asArray(result.options)[0]);
+		const parsedExpiration =
+			numberOrUndefined(rawOption.expirationDate) ??
+			firstContractExpiration(rawOption) ??
+			expirationUnix ??
+			expirationDates[0];
+		const option =
+			parsedExpiration === undefined
+				? undefined
+				: {
+						expirationUnix: parsedExpiration,
+						expirationDate: dateFromUnixSeconds(parsedExpiration),
+						contracts: [
+							...parseOptionContracts(asArray(rawOption.calls), "call", parsedExpiration),
+							...parseOptionContracts(asArray(rawOption.puts), "put", parsedExpiration),
+						],
+					};
+		return {
+			symbol: normalizeSymbol(stringOrUndefined(quote.symbol) ?? normalized),
+			underlyingPrice: numberOrNull(quote.regularMarketPrice),
+			asOf: isoFromUnixSeconds(quote.regularMarketTime) ?? this.now().toISOString(),
+			expirationDates,
+			option,
+		};
+	}
+
+	private async fetchYahooOptionsJson(normalized: string, expirationUnix?: number): Promise<unknown> {
+		try {
+			return await this.fetchYahooOptionsJsonWithAuth(normalized, expirationUnix, this.yahooOptionsAuth);
+		} catch (error) {
+			if (!isYahooOptionsAuthError(error)) throw error;
+			this.yahooOptionsAuth = undefined;
+			const auth = await this.getYahooOptionsAuth();
+			return this.fetchYahooOptionsJsonWithAuth(normalized, expirationUnix, auth);
+		}
+	}
+
+	private async fetchYahooOptionsJsonWithAuth(
+		normalized: string,
+		expirationUnix: number | undefined,
+		auth: YahooAuth | undefined,
+	): Promise<unknown> {
+		const url = this.yahooOptionsUrl(normalized, expirationUnix, auth?.crumb);
+		const headers = auth ? { cookie: auth.cookie } : undefined;
+		return this.fetchJson(url, "yahoo_options", headers);
+	}
+
+	private yahooOptionsUrl(normalized: string, expirationUnix: number | undefined, crumb: string | undefined): string {
+		const params = new URLSearchParams();
+		if (expirationUnix !== undefined) params.set("date", String(expirationUnix));
+		if (crumb) params.set("crumb", crumb);
+		const query = params.toString();
+		return `${YAHOO_QUERY_1}/v7/finance/options/${encodeURIComponent(normalized)}${query ? `?${query}` : ""}`;
+	}
+
 	private shouldTryHistoryFallback(chart: YahooChartData, requestedRange: string, requestedInterval: string): boolean {
 		if (chart.bars.length > 1) return false;
 		if (requestedRange === "1d" && requestedInterval === "1m") return false;
@@ -351,6 +469,135 @@ export class FinanceClient {
 			};
 		} catch (error) {
 			return this.degraded(empty, "yahoo_chart", this.errorReason("history", error));
+		}
+	}
+
+	async getOptionsPositioning(
+		symbol: string,
+		options: OptionsPositioningOptions = {},
+	): Promise<SourceResult<OptionsPositioning | null>> {
+		const normalized = normalizeSymbol(symbol);
+		try {
+			const firstChain = await this.fetchYahooOptionsChain(normalized);
+			const selectedExpirations = selectOptionExpirations(
+				firstChain,
+				options.expiration,
+				options.expirationLimit ?? 4,
+			);
+			const expirationChains = await Promise.all(
+				selectedExpirations.map(async (expirationUnix) =>
+					firstChain.option?.expirationUnix === expirationUnix
+						? firstChain
+						: this.fetchYahooOptionsChain(normalized, expirationUnix),
+				),
+			);
+			const expirations = expirationChains
+				.flatMap((chain) => (chain.option ? [chain.option] : []))
+				.filter((chain) => chain.contracts.length > 0);
+			if (expirations.length === 0) {
+				return this.degraded(null, "yahoo_options", "options_chain_empty");
+			}
+			const underlyingPrice = firstChain.underlyingPrice ?? firstNonNullPrice(expirationChains);
+			const expirationPositioning = expirations.map((expiration) =>
+				buildExpirationPositioning(expiration, underlyingPrice, this.now()),
+			);
+			const allContracts = expirations.flatMap((expiration) => expiration.contracts);
+			const summary = buildOptionsSummary(allContracts, underlyingPrice, undefined, this.now());
+			const expirationDates = expirationPositioning.map((expiration) => expiration.expirationDate);
+			const asOf =
+				expirationChains.map((chain) => chain.asOf).sort((left, right) => right.localeCompare(left))[0] ??
+				this.now().toISOString();
+			return {
+				value: {
+					symbol: normalized,
+					market: inferMarketCode(normalized),
+					underlyingPrice,
+					asOf,
+					expirationDates,
+					expirations: expirationPositioning,
+					summary,
+					source: "yahoo_options",
+					limitations: [
+						"estimated_gamma_not_dealer_book",
+						"open_interest_is_delayed",
+						"customer_direction_unknown",
+						"yahoo_options_not_realtime_professional_feed",
+					],
+				},
+				health: {
+					source: "yahoo_options",
+					status: "ok",
+					latestAt: asOf,
+					configured: true,
+					used: true,
+				},
+			};
+		} catch (error) {
+			const fallback = await this.getCboeOptionsPositioning(normalized, options);
+			if (fallback.value) return fallback;
+			return this.degraded(null, "yahoo_options", this.errorReason("options", error));
+		}
+	}
+
+	private async getCboeOptionsPositioning(
+		normalized: string,
+		options: OptionsPositioningOptions,
+	): Promise<SourceResult<OptionsPositioning | null>> {
+		try {
+			const url = `${CBOE_OPTIONS_BASE}/${encodeURIComponent(normalized)}.json`;
+			const payload = await this.fetchJson(url, "cboe_options");
+			const data = asRecord(asRecord(payload).data);
+			const allContracts = asArray(data.options).flatMap(parseCboeOptionContract);
+			if (allContracts.length === 0) return this.degraded(null, "cboe_options", "cboe_options_chain_empty");
+			const requestedExpiration = parseExpirationInput(options.expiration);
+			const expirationLimit = Math.max(1, Math.min(12, Math.floor(options.expirationLimit ?? 4)));
+			const expirationUnixDates = [
+				...new Set(allContracts.map((contract) => contract.expirationUnix).sort((left, right) => left - right)),
+			];
+			const selectedExpirations =
+				requestedExpiration === undefined ? expirationUnixDates.slice(0, expirationLimit) : [requestedExpiration];
+			const expirations = selectedExpirations
+				.map((expirationUnix) => ({
+					expirationUnix,
+					expirationDate: dateFromUnixSeconds(expirationUnix),
+					contracts: allContracts.filter((contract) => contract.expirationUnix === expirationUnix),
+				}))
+				.filter((expiration) => expiration.contracts.length > 0);
+			if (expirations.length === 0) return this.degraded(null, "cboe_options", "cboe_options_chain_empty");
+			const underlyingPrice = numberOrNull(data.current_price);
+			const expirationPositioning = expirations.map((expiration) =>
+				buildExpirationPositioning(expiration, underlyingPrice, this.now()),
+			);
+			const selectedContracts = expirations.flatMap((expiration) => expiration.contracts);
+			const summary = buildOptionsSummary(selectedContracts, underlyingPrice, undefined, this.now());
+			const asOf = isoFromCboeTimestamp(asRecord(payload).timestamp) ?? this.now().toISOString();
+			return {
+				value: {
+					symbol: normalizeSymbol(stringOrUndefined(data.symbol) ?? normalized),
+					market: inferMarketCode(normalized),
+					underlyingPrice,
+					asOf,
+					expirationDates: expirationPositioning.map((expiration) => expiration.expirationDate),
+					expirations: expirationPositioning,
+					summary,
+					source: "cboe_options",
+					limitations: [
+						"estimated_gamma_not_dealer_book",
+						"open_interest_is_delayed",
+						"customer_direction_unknown",
+						"cboe_options_delayed",
+					],
+				},
+				health: {
+					source: "cboe_options",
+					status: "ok",
+					latestAt: asOf,
+					configured: true,
+					used: true,
+				},
+			};
+		} catch (error) {
+			return this.degraded(null, "cboe_options", this.errorReason("cboe_options", error));
 		}
 	}
 
@@ -736,11 +983,47 @@ export class FinanceClient {
 		return map;
 	}
 
-	private async fetchJson(url: string, source: string): Promise<unknown> {
+	private async getYahooOptionsAuth(): Promise<YahooAuth> {
+		if (this.yahooOptionsAuth) return this.yahooOptionsAuth;
+		const cookie = await this.fetchYahooCookie();
+		const crumb = await this.fetchYahooCrumb(cookie);
+		this.yahooOptionsAuth = { cookie, crumb };
+		return this.yahooOptionsAuth;
+	}
+
+	private async fetchYahooCookie(): Promise<string> {
+		const response = await this.fetchImpl("https://fc.yahoo.com", {
+			headers: {
+				"user-agent": YAHOO_USER_AGENT,
+			},
+		});
+		const cookie = cookieHeaderFromSetCookie(response.headers);
+		if (!cookie) throw new Error("yahoo_options_cookie_missing");
+		return cookie;
+	}
+
+	private async fetchYahooCrumb(cookie: string): Promise<string> {
+		const response = await this.fetchImpl(`${YAHOO_QUERY_1}/v1/test/getcrumb`, {
+			headers: {
+				accept: "text/plain",
+				cookie,
+				"user-agent": YAHOO_USER_AGENT,
+			},
+		});
+		if (!response.ok) {
+			throw new Error(`yahoo_options_crumb_http_${response.status}`);
+		}
+		const crumb = (await response.text()).trim();
+		if (!crumb || crumb.startsWith("{")) throw new Error("yahoo_options_crumb_missing");
+		return crumb;
+	}
+
+	private async fetchJson(url: string, source: string, headers: Record<string, string> = {}): Promise<unknown> {
 		const response = await this.fetchImpl(url, {
 			headers: {
 				accept: "application/json",
-				"user-agent": this.userAgent,
+				"user-agent": source.startsWith("yahoo_") ? YAHOO_USER_AGENT : this.userAgent,
+				...headers,
 			},
 		});
 		if (!response.ok) {
@@ -755,6 +1038,322 @@ export class FinanceClient {
 		if (httpMatch) return `${scope}_http_${httpMatch[1]}`;
 		return `${scope}_unavailable`;
 	}
+}
+
+function isYahooOptionsAuthError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return (
+		message === "yahoo_options_http_401" ||
+		message === "yahoo_options_http_403" ||
+		message === "yahoo_options_http_429" ||
+		message === "yahoo_options_Unauthorized"
+	);
+}
+
+function cookieHeaderFromSetCookie(headers: Headers): string | undefined {
+	const setCookieHeaders = headers.getSetCookie();
+	const values = setCookieHeaders.length > 0 ? setCookieHeaders : [headers.get("set-cookie") ?? ""];
+	const pairs = values.flatMap((value) => {
+		const pair = value.split(";")[0]?.trim();
+		return pair?.includes("=") ? [pair] : [];
+	});
+	return pairs.length > 0 ? pairs.join("; ") : undefined;
+}
+
+function firstContractExpiration(rawOption: JsonRecord): number | undefined {
+	for (const raw of [...asArray(rawOption.calls), ...asArray(rawOption.puts)]) {
+		const expiration = numberOrUndefined(asRecord(raw).expiration);
+		if (expiration !== undefined) return expiration;
+	}
+	return undefined;
+}
+
+function parseOptionContracts(
+	rawContracts: unknown[],
+	optionType: OptionType,
+	fallbackExpirationUnix: number,
+): ParsedOptionContract[] {
+	return rawContracts.flatMap((raw) => {
+		const contract = asRecord(raw);
+		const strike = numberOrUndefined(contract.strike);
+		if (strike === undefined) return [];
+		const expirationUnix = numberOrUndefined(contract.expiration) ?? fallbackExpirationUnix;
+		return [
+			{
+				optionType,
+				contractSymbol: stringOrUndefined(contract.contractSymbol),
+				expirationUnix,
+				expirationDate: dateFromUnixSeconds(expirationUnix),
+				strike,
+				volume: numberOrNull(contract.volume),
+				openInterest: numberOrNull(contract.openInterest),
+				impliedVolatility: numberOrNull(contract.impliedVolatility),
+			},
+		];
+	});
+}
+
+function parseCboeOptionContract(raw: unknown): ParsedOptionContract[] {
+	const contract = asRecord(raw);
+	const contractSymbol = stringOrUndefined(contract.option);
+	const match = contractSymbol ? /^(.+)(\d{6})([CP])(\d{8})$/.exec(contractSymbol) : null;
+	if (!match) return [];
+	const expirationUnix = unixFromOptionDate(match[2]);
+	if (expirationUnix === undefined) return [];
+	const rawStrike = Number(match[4]);
+	if (!Number.isFinite(rawStrike)) return [];
+	return [
+		{
+			optionType: match[3] === "C" ? "call" : "put",
+			contractSymbol,
+			expirationUnix,
+			expirationDate: dateFromUnixSeconds(expirationUnix),
+			strike: rawStrike / 1000,
+			volume: numberOrNull(contract.volume),
+			openInterest: numberOrNull(contract.open_interest),
+			impliedVolatility: numberOrNull(contract.iv),
+		},
+	];
+}
+
+function dateFromUnixSeconds(value: number): string {
+	return new Date(value * 1000).toISOString().slice(0, 10);
+}
+
+function unixFromOptionDate(value: string): number | undefined {
+	const match = /^(\d{2})(\d{2})(\d{2})$/.exec(value);
+	if (!match) return undefined;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return undefined;
+	if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+	const fullYear = year >= 70 ? 1900 + year : 2000 + year;
+	return Math.floor(Date.UTC(fullYear, month - 1, day) / 1000);
+}
+
+function parseExpirationInput(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const trimmed = value.trim();
+	if (!trimmed) return undefined;
+	if (/^\d+$/.test(trimmed)) {
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) ? parsed : undefined;
+	}
+	const parsed = Date.parse(`${trimmed.slice(0, 10)}T00:00:00Z`);
+	return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : undefined;
+}
+
+function selectOptionExpirations(
+	chain: YahooOptionsChainData,
+	expiration: string | undefined,
+	expirationLimit: number,
+): number[] {
+	const requestedExpiration = parseExpirationInput(expiration);
+	if (requestedExpiration !== undefined) return [requestedExpiration];
+	const limit = Math.max(1, Math.min(12, Math.floor(expirationLimit)));
+	const dates = chain.expirationDates.length > 0 ? chain.expirationDates : [];
+	const preferredFirst = chain.option?.expirationUnix;
+	const selected = preferredFirst === undefined ? [] : [preferredFirst];
+	for (const date of dates) {
+		if (selected.length >= limit) break;
+		if (!selected.includes(date)) selected.push(date);
+	}
+	return selected.slice(0, limit);
+}
+
+function firstNonNullPrice(chains: YahooOptionsChainData[]): number | null {
+	for (const chain of chains) {
+		if (chain.underlyingPrice !== null) return chain.underlyingPrice;
+	}
+	return null;
+}
+
+function buildExpirationPositioning(
+	expiration: YahooOptionsExpirationData,
+	underlyingPrice: number | null,
+	now: Date,
+): OptionsExpirationPositioning {
+	return {
+		expirationDate: expiration.expirationDate,
+		...buildOptionsSummary(expiration.contracts, underlyingPrice, expiration.expirationUnix, now),
+	};
+}
+
+function buildOptionsSummary(
+	contracts: ParsedOptionContract[],
+	underlyingPrice: number | null,
+	_expirationUnix: number | undefined,
+	now: Date,
+): OptionsPositioningSummary {
+	const callVolume = sumOptionField(contracts, "call", "volume");
+	const putVolume = sumOptionField(contracts, "put", "volume");
+	const callOpenInterest = sumOptionField(contracts, "call", "openInterest");
+	const putOpenInterest = sumOptionField(contracts, "put", "openInterest");
+	const gammaByStrike = buildGammaByStrike(contracts, underlyingPrice, now);
+	return {
+		callVolume,
+		putVolume,
+		callOpenInterest,
+		putOpenInterest,
+		volumePutCallRatio: ratioOrNull(putVolume, callVolume),
+		openInterestPutCallRatio: ratioOrNull(putOpenInterest, callOpenInterest),
+		callWall: wallBySide(gammaByStrike, "call"),
+		putWall: wallBySide(gammaByStrike, "put"),
+		maxPain: maxPainStrike(contracts, gammaByStrike),
+		estimatedNetGammaExposure: roundMetric(
+			gammaByStrike.reduce((total, strike) => total + strike.netGammaExposure, 0),
+		),
+		estimatedGrossGammaExposure: roundMetric(
+			gammaByStrike.reduce((total, strike) => total + strike.grossGammaExposure, 0),
+		),
+		gammaByStrike,
+		contracts: contracts.length,
+	};
+}
+
+function sumOptionField(
+	contracts: ParsedOptionContract[],
+	optionType: OptionType,
+	field: "volume" | "openInterest",
+): number {
+	return contracts
+		.filter((contract) => contract.optionType === optionType)
+		.reduce((total, contract) => total + (contract[field] ?? 0), 0);
+}
+
+function ratioOrNull(numerator: number, denominator: number): number | null {
+	if (denominator === 0) return null;
+	return numerator / denominator;
+}
+
+function buildGammaByStrike(
+	contracts: ParsedOptionContract[],
+	underlyingPrice: number | null,
+	now: Date,
+): OptionGammaByStrike[] {
+	const byStrike = new Map<number, OptionGammaByStrike>();
+	for (const contract of contracts) {
+		const current = byStrike.get(contract.strike) ?? {
+			strike: contract.strike,
+			callOpenInterest: 0,
+			putOpenInterest: 0,
+			totalOpenInterest: 0,
+			callVolume: 0,
+			putVolume: 0,
+			callGammaExposure: 0,
+			putGammaExposure: 0,
+			netGammaExposure: 0,
+			grossGammaExposure: 0,
+		};
+		const openInterest = contract.openInterest ?? 0;
+		const volume = contract.volume ?? 0;
+		const gammaExposure = estimateGammaExposure(contract, underlyingPrice, now);
+		if (contract.optionType === "call") {
+			current.callOpenInterest += openInterest;
+			current.callVolume += volume;
+			current.callGammaExposure += gammaExposure;
+		} else {
+			current.putOpenInterest += openInterest;
+			current.putVolume += volume;
+			current.putGammaExposure -= gammaExposure;
+		}
+		current.totalOpenInterest = current.callOpenInterest + current.putOpenInterest;
+		current.netGammaExposure = current.callGammaExposure + current.putGammaExposure;
+		current.grossGammaExposure = Math.abs(current.callGammaExposure) + Math.abs(current.putGammaExposure);
+		byStrike.set(contract.strike, current);
+	}
+	return [...byStrike.values()]
+		.map((strike) => ({
+			...strike,
+			callGammaExposure: roundMetric(strike.callGammaExposure),
+			putGammaExposure: roundMetric(strike.putGammaExposure),
+			netGammaExposure: roundMetric(strike.netGammaExposure),
+			grossGammaExposure: roundMetric(strike.grossGammaExposure),
+		}))
+		.sort((left, right) => right.grossGammaExposure - left.grossGammaExposure || left.strike - right.strike);
+}
+
+function estimateGammaExposure(contract: ParsedOptionContract, underlyingPrice: number | null, now: Date): number {
+	const spot = underlyingPrice;
+	const impliedVolatility = contract.impliedVolatility;
+	const openInterest = contract.openInterest ?? 0;
+	if (
+		spot === null ||
+		spot <= 0 ||
+		contract.strike <= 0 ||
+		impliedVolatility === null ||
+		impliedVolatility <= 0 ||
+		openInterest <= 0
+	) {
+		return 0;
+	}
+	const yearsToExpiration = Math.max(
+		1 / 365,
+		(contract.expirationUnix * 1000 - now.getTime()) / (365 * 24 * 60 * 60 * 1000),
+	);
+	const sqrtTime = Math.sqrt(yearsToExpiration);
+	const d1 =
+		(Math.log(spot / contract.strike) + 0.5 * impliedVolatility * impliedVolatility * yearsToExpiration) /
+		(impliedVolatility * sqrtTime);
+	const gamma = normalPdf(d1) / (spot * impliedVolatility * sqrtTime);
+	return gamma * openInterest * 100 * spot * spot * 0.01;
+}
+
+function normalPdf(value: number): number {
+	return Math.exp(-0.5 * value * value) / Math.sqrt(2 * Math.PI);
+}
+
+function wallBySide(gammaByStrike: OptionGammaByStrike[], side: OptionType): OptionWall | null {
+	const sorted = [...gammaByStrike].sort((left, right) => {
+		const leftValue = side === "call" ? left.callOpenInterest : left.putOpenInterest;
+		const rightValue = side === "call" ? right.callOpenInterest : right.putOpenInterest;
+		return rightValue - leftValue || left.strike - right.strike;
+	});
+	const top = sorted[0];
+	const sideOpenInterest = top ? (side === "call" ? top.callOpenInterest : top.putOpenInterest) : 0;
+	if (!top || sideOpenInterest === 0) return null;
+	return {
+		strike: top.strike,
+		callOpenInterest: top.callOpenInterest,
+		putOpenInterest: top.putOpenInterest,
+		totalOpenInterest: top.totalOpenInterest,
+	};
+}
+
+function maxPainStrike(contracts: ParsedOptionContract[], gammaByStrike: OptionGammaByStrike[]): OptionWall | null {
+	if (contracts.length === 0 || gammaByStrike.length === 0) return null;
+	const byStrike = new Map(gammaByStrike.map((strike) => [strike.strike, strike]));
+	let bestStrike: OptionWall | null = null;
+	let bestPayout = Number.POSITIVE_INFINITY;
+	for (const strike of [...byStrike.keys()].sort((left, right) => left - right)) {
+		const payout = contracts.reduce((total, contract) => {
+			const openInterest = contract.openInterest ?? 0;
+			const intrinsic =
+				contract.optionType === "call"
+					? Math.max(0, strike - contract.strike)
+					: Math.max(0, contract.strike - strike);
+			return total + intrinsic * openInterest * 100;
+		}, 0);
+		if (payout < bestPayout) {
+			const row = byStrike.get(strike);
+			bestPayout = payout;
+			bestStrike = row
+				? {
+						strike: row.strike,
+						callOpenInterest: row.callOpenInterest,
+						putOpenInterest: row.putOpenInterest,
+						totalOpenInterest: row.totalOpenInterest,
+					}
+				: null;
+		}
+	}
+	return bestStrike;
+}
+
+function roundMetric(value: number): number {
+	if (!Number.isFinite(value)) return 0;
+	return Math.round(value * 100) / 100;
 }
 
 function reasonPart(value: string): string {

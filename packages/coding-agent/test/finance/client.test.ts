@@ -256,6 +256,143 @@ const alternativeRevenueFactsPayload = {
 	},
 };
 
+const optionExpirationA = Math.floor(Date.parse("2026-07-17T00:00:00Z") / 1000);
+const optionExpirationB = Math.floor(Date.parse("2026-08-21T00:00:00Z") / 1000);
+
+const optionsPayloadA = {
+	optionChain: {
+		result: [
+			{
+				quote: {
+					symbol: "NVDA",
+					regularMarketPrice: 100,
+					regularMarketTime: 1781913600,
+				},
+				expirationDates: [optionExpirationA, optionExpirationB],
+				options: [
+					{
+						expirationDate: optionExpirationA,
+						calls: [
+							{
+								contractSymbol: "NVDA260717C00100000",
+								strike: 100,
+								volume: 100,
+								openInterest: 1000,
+								impliedVolatility: 0.4,
+								expiration: optionExpirationA,
+							},
+							{
+								contractSymbol: "NVDA260717C00105000",
+								strike: 105,
+								volume: 250,
+								openInterest: 2200,
+								impliedVolatility: 0.45,
+								expiration: optionExpirationA,
+							},
+						],
+						puts: [
+							{
+								contractSymbol: "NVDA260717P00100000",
+								strike: 100,
+								volume: 80,
+								openInterest: 900,
+								impliedVolatility: 0.42,
+								expiration: optionExpirationA,
+							},
+							{
+								contractSymbol: "NVDA260717P00095000",
+								strike: 95,
+								volume: 300,
+								openInterest: 2500,
+								impliedVolatility: 0.5,
+								expiration: optionExpirationA,
+							},
+						],
+					},
+				],
+			},
+		],
+	},
+};
+
+const optionsPayloadB = {
+	optionChain: {
+		result: [
+			{
+				quote: {
+					symbol: "NVDA",
+					regularMarketPrice: 100,
+					regularMarketTime: 1781913600,
+				},
+				expirationDates: [optionExpirationA, optionExpirationB],
+				options: [
+					{
+						expirationDate: optionExpirationB,
+						calls: [
+							{
+								contractSymbol: "NVDA260821C00110000",
+								strike: 110,
+								volume: 50,
+								openInterest: 1000,
+								impliedVolatility: 0.48,
+								expiration: optionExpirationB,
+							},
+						],
+						puts: [
+							{
+								contractSymbol: "NVDA260821P00090000",
+								strike: 90,
+								volume: 70,
+								openInterest: 1200,
+								impliedVolatility: 0.55,
+								expiration: optionExpirationB,
+							},
+						],
+					},
+				],
+			},
+		],
+	},
+};
+
+const cboeOptionsPayload = {
+	timestamp: "2026-06-20 20:00:00",
+	data: {
+		symbol: "NVDA",
+		current_price: 100,
+		options: [
+			{
+				option: "NVDA260717C00100000",
+				volume: 100,
+				open_interest: 1000,
+				iv: 0.4,
+				gamma: 0.05,
+			},
+			{
+				option: "NVDA260717C00105000",
+				volume: 250,
+				open_interest: 2200,
+				iv: 0.45,
+				gamma: 0.04,
+			},
+			{
+				option: "NVDA260717P00100000",
+				volume: 80,
+				open_interest: 900,
+				iv: 0.42,
+				gamma: 0.05,
+			},
+			{
+				option: "NVDA260717P00095000",
+				volume: 300,
+				open_interest: 2500,
+				iv: 0.5,
+				gamma: 0.03,
+			},
+		],
+	},
+};
+
 describe("FinanceClient", () => {
 	it("builds a symbol context from quote, history, news and SEC facts", async () => {
 		const client = new FinanceClient({
@@ -572,5 +709,135 @@ describe("FinanceClient", () => {
 		expect(facts.value?.facts.assets?.periodEnd).toBe("2026-02-01");
 		expect(facts.value?.facts.liabilities?.value).toBe(4000000000);
 		expect(facts.value?.asOf).toBe("2026-02-01");
+	});
+
+	it("builds options positioning from Yahoo option chains", async () => {
+		const requestedUrls: string[] = [];
+		const client = new FinanceClient({
+			env: {},
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				requestedUrls.push(text);
+				if (!text.includes("/v7/finance/options/NVDA")) throw new Error(`unexpected URL ${text}`);
+				const requestUrl = new URL(text);
+				const date = requestUrl.searchParams.get("date");
+				if (date === String(optionExpirationB)) return jsonResponse(optionsPayloadB);
+				return jsonResponse(optionsPayloadA);
+			},
+		});
+
+		const positioning = await client.getOptionsPositioning("nvda", { expirationLimit: 2 });
+
+		expect(positioning.value?.symbol).toBe("NVDA");
+		expect(positioning.value?.underlyingPrice).toBe(100);
+		expect(positioning.value?.expirationDates).toEqual(["2026-07-17", "2026-08-21"]);
+		expect(positioning.value?.expirations).toHaveLength(2);
+		expect(positioning.value?.summary.callVolume).toBe(400);
+		expect(positioning.value?.summary.putVolume).toBe(450);
+		expect(positioning.value?.summary.volumePutCallRatio).toBeCloseTo(1.125);
+		expect(positioning.value?.summary.callOpenInterest).toBe(4200);
+		expect(positioning.value?.summary.putOpenInterest).toBe(4600);
+		expect(positioning.value?.summary.openInterestPutCallRatio).toBeCloseTo(4600 / 4200);
+		expect(positioning.value?.summary.callWall).toEqual(
+			expect.objectContaining({ strike: 105, callOpenInterest: 2200 }),
+		);
+		expect(positioning.value?.summary.putWall).toEqual(
+			expect.objectContaining({ strike: 95, putOpenInterest: 2500 }),
+		);
+		expect(positioning.value?.summary.maxPain).toEqual(expect.objectContaining({ strike: 100 }));
+		expect(positioning.value?.summary.estimatedGrossGammaExposure).toBeGreaterThan(0);
+		expect(positioning.value?.summary.gammaByStrike.length).toBeGreaterThan(0);
+		expect(positioning.value?.limitations).toContain("estimated_gamma_not_dealer_book");
+		expect(positioning.health.status).toBe("ok");
+		expect(requestedUrls).toHaveLength(2);
+		expect(requestedUrls[1]).toContain(`date=${optionExpirationB}`);
+	});
+
+	it("refreshes Yahoo options cookie and crumb when the option chain rejects the first request", async () => {
+		const requestedUrls: string[] = [];
+		const requestedHeaders: Headers[] = [];
+		const client = new FinanceClient({
+			env: {},
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url, init) => {
+				const text = String(url);
+				requestedUrls.push(text);
+				requestedHeaders.push(new Headers(init?.headers));
+				if (text === "https://fc.yahoo.com") {
+					expect(new Headers(init?.headers).get("user-agent")).toContain("Mozilla");
+					return new Response("", {
+						status: 404,
+						headers: {
+							"set-cookie":
+								"A3=test-cookie; Expires=Tue, 29 Jun 2027 12:28:31 GMT; Domain=.yahoo.com; Path=/; SameSite=None; Secure; HttpOnly",
+						},
+					});
+				}
+				if (text === "https://query1.finance.yahoo.com/v1/test/getcrumb") {
+					expect(new Headers(init?.headers).get("cookie")).toBe("A3=test-cookie");
+					expect(new Headers(init?.headers).get("user-agent")).toContain("Mozilla");
+					return new Response("test-crumb", { status: 200, headers: { "content-type": "text/plain" } });
+				}
+				if (text.includes("/v7/finance/options/NVDA")) {
+					const requestUrl = new URL(text);
+					if (!requestUrl.searchParams.has("crumb")) return jsonResponse({ error: "Invalid Crumb" }, 429);
+					expect(requestUrl.searchParams.get("crumb")).toBe("test-crumb");
+					expect(new Headers(init?.headers).get("cookie")).toBe("A3=test-cookie");
+					expect(new Headers(init?.headers).get("user-agent")).toContain("Mozilla");
+					return jsonResponse(optionsPayloadA);
+				}
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const positioning = await client.getOptionsPositioning("NVDA", { expirationLimit: 1 });
+
+		expect(positioning.health.status).toBe("ok");
+		expect(positioning.value?.summary.contracts).toBe(4);
+		expect(requestedUrls).toEqual([
+			"https://query1.finance.yahoo.com/v7/finance/options/NVDA",
+			"https://fc.yahoo.com",
+			"https://query1.finance.yahoo.com/v1/test/getcrumb",
+			"https://query1.finance.yahoo.com/v7/finance/options/NVDA?crumb=test-crumb",
+		]);
+		expect(requestedHeaders[0]?.get("cookie")).toBeNull();
+	});
+
+	it("falls back to Cboe delayed options when Yahoo options stays unavailable", async () => {
+		const requestedUrls: string[] = [];
+		const client = new FinanceClient({
+			env: {},
+			now: () => new Date("2026-06-20T00:00:00Z"),
+			fetch: async (url) => {
+				const text = String(url);
+				requestedUrls.push(text);
+				if (text.includes("/v7/finance/options/NVDA")) return jsonResponse({ error: "anonymous blocked" }, 429);
+				if (text === "https://fc.yahoo.com") {
+					return new Response("", {
+						status: 404,
+						headers: { "set-cookie": "A3=test-cookie; Domain=.yahoo.com; Path=/; Secure; HttpOnly" },
+					});
+				}
+				if (text === "https://query1.finance.yahoo.com/v1/test/getcrumb") {
+					return new Response("Too Many Requests", { status: 429 });
+				}
+				if (text === "https://cdn.cboe.com/api/global/delayed_quotes/options/NVDA.json") {
+					return jsonResponse(cboeOptionsPayload);
+				}
+				throw new Error(`unexpected URL ${text}`);
+			},
+		});
+
+		const positioning = await client.getOptionsPositioning("NVDA", { expirationLimit: 1 });
+
+		expect(positioning.health.status).toBe("ok");
+		expect(positioning.health.source).toBe("cboe_options");
+		expect(positioning.value?.source).toBe("cboe_options");
+		expect(positioning.value?.asOf).toBe("2026-06-20T20:00:00.000Z");
+		expect(positioning.value?.summary.volumePutCallRatio).toBeCloseTo(380 / 350);
+		expect(positioning.value?.summary.openInterestPutCallRatio).toBeCloseTo(3400 / 3200);
+		expect(positioning.value?.limitations).toContain("cboe_options_delayed");
+		expect(requestedUrls).toContain("https://cdn.cboe.com/api/global/delayed_quotes/options/NVDA.json");
 	});
 });

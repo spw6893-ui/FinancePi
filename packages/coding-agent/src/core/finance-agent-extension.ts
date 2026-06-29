@@ -10,6 +10,7 @@ import type {
 	History,
 	MarketBrief,
 	NewsResult,
+	OptionsPositioning,
 	Quote,
 	SourceHealth,
 	SymbolContext,
@@ -128,6 +129,7 @@ function formatFinanceDetails(label: string, details: unknown, artifact?: Market
 	if (isNewsSourceResult(details)) return formatNewsResult(label, details, artifact);
 	if (isFundamentalsSourceResult(details)) return formatFundamentalsResult(label, details, artifact);
 	if (isQuoteSourceResult(details)) return formatQuoteResult(label, details, artifact);
+	if (isOptionsPositioningSourceResult(details)) return formatOptionsPositioningResult(label, details, artifact);
 	if (isTechnicalDetails(details)) return formatTechnicalDetails(label, details, artifact);
 	if (isSymbolContext(details)) return formatSymbolContext(label, details, artifact);
 	if (isMarketBrief(details)) return formatMarketBrief(label, details, artifact);
@@ -180,6 +182,13 @@ function isFundamentalsSourceResult(value: unknown): value is SourceResult<Funda
 function isQuoteSourceResult(value: unknown): value is SourceResult<Quote | null> {
 	return (
 		isSourceResult<Quote | null>(value) && (value.value === null || (isRecord(value.value) && "price" in value.value))
+	);
+}
+
+function isOptionsPositioningSourceResult(value: unknown): value is SourceResult<OptionsPositioning | null> {
+	return (
+		isSourceResult<OptionsPositioning | null>(value) &&
+		(value.value === null || (isRecord(value.value) && "summary" in value.value && "expirationDates" in value.value))
 	);
 }
 
@@ -246,6 +255,25 @@ function formatHistoryResult(label: string, result: SourceResult<History>, artif
 		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
 		`summary: ${formatHealthShort(result.health)}, symbol=${result.value.symbol}, bars=${result.value.bars.length}, latestClose=${formatValue(bars.at(-1)?.close)}`,
 	].join("\n");
+}
+
+function formatOptionsPositioningResult(
+	label: string,
+	result: SourceResult<OptionsPositioning | null>,
+	artifact?: MarketArtifact,
+): string {
+	const value = result.value;
+	const summary = value?.summary;
+	return [
+		`${label} fetched. Artifact: ${formatArtifact(artifact)}.`,
+		`summary: ${formatHealthShort(result.health)}${result.degradedReason ? `, degraded=${result.degradedReason}` : ""}`,
+		value && summary
+			? `options: symbol=${value.symbol}, underlyingPrice=${formatValue(value.underlyingPrice)}, expirations=${value.expirationDates.join("|") || "none"}, contracts=${summary.contracts}, putCallVolume=${formatValue(summary.volumePutCallRatio)}, putCallOpenInterest=${formatValue(summary.openInterestPutCallRatio)}, callWall=${formatValue(summary.callWall?.strike)}, putWall=${formatValue(summary.putWall?.strike)}, maxPain=${formatValue(summary.maxPain?.strike)}, estimatedNetGammaExposure=${formatValue(summary.estimatedNetGammaExposure)}, estimatedGrossGammaExposure=${formatValue(summary.estimatedGrossGammaExposure)}, source=${value.source}`
+			: "options: unavailable",
+		value?.limitations.length ? `limitations=${value.limitations.join("|")}` : undefined,
+	]
+		.filter(Boolean)
+		.join("\n");
 }
 
 function formatNewsResult(label: string, result: SourceResult<NewsResult>, artifact?: MarketArtifact): string {
@@ -449,6 +477,7 @@ function financeArtifactLines(details: unknown): string[] | undefined {
 			]),
 		];
 	}
+	if (isOptionsPositioningSourceResult(details)) return optionsPositioningArtifactLines(details.value);
 	if (isSymbolContext(details)) return symbolContextArtifactLines(details);
 	if (isMarketBrief(details)) return marketBriefArtifactLines(details);
 	if (isCompareSymbolsResult(details)) {
@@ -471,6 +500,124 @@ function financeArtifactLines(details: unknown): string[] | undefined {
 		];
 	}
 	return undefined;
+}
+
+function optionsPositioningArtifactLines(positioning: OptionsPositioning | null): string[] {
+	const header =
+		"section,expirationDate,strike,callOpenInterest,putOpenInterest,totalOpenInterest,callGammaExposure,putGammaExposure,netGammaExposure,grossGammaExposure,metric,value";
+	if (!positioning) return [header];
+	return [
+		header,
+		...optionsSummaryRows("summary", undefined, positioning.summary),
+		...positioning.expirations.flatMap((expiration) => [
+			...optionsSummaryRows("expiration_summary", expiration.expirationDate, expiration),
+			...expiration.gammaByStrike.map((strike) =>
+				csvRow([
+					"gamma",
+					expiration.expirationDate,
+					strike.strike,
+					strike.callOpenInterest,
+					strike.putOpenInterest,
+					strike.totalOpenInterest,
+					strike.callGammaExposure,
+					strike.putGammaExposure,
+					strike.netGammaExposure,
+					strike.grossGammaExposure,
+				]),
+			),
+		]),
+	];
+}
+
+function optionsSummaryRows(
+	section: string,
+	expirationDate: string | undefined,
+	summary: OptionsPositioning["summary"],
+): string[] {
+	return [
+		optionWallRow(section, expirationDate, "callWall", summary.callWall),
+		optionWallRow(section, expirationDate, "putWall", summary.putWall),
+		optionWallRow(section, expirationDate, "maxPain", summary.maxPain),
+		csvRow([
+			section,
+			expirationDate,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"volumePutCallRatio",
+			summary.volumePutCallRatio,
+		]),
+		csvRow([
+			section,
+			expirationDate,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"openInterestPutCallRatio",
+			summary.openInterestPutCallRatio,
+		]),
+		csvRow([
+			section,
+			expirationDate,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"estimatedNetGammaExposure",
+			summary.estimatedNetGammaExposure,
+		]),
+		csvRow([
+			section,
+			expirationDate,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			"estimatedGrossGammaExposure",
+			summary.estimatedGrossGammaExposure,
+		]),
+	].filter((row): row is string => row !== undefined);
+}
+
+function optionWallRow(
+	section: string,
+	expirationDate: string | undefined,
+	metric: string,
+	wall: OptionsPositioning["summary"]["callWall"],
+): string | undefined {
+	if (!wall) return undefined;
+	return csvRow([
+		section,
+		expirationDate,
+		wall.strike,
+		wall.callOpenInterest,
+		wall.putOpenInterest,
+		wall.totalOpenInterest,
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		metric,
+		wall.strike,
+	]);
 }
 
 function mcpContentText(item: unknown): string {
@@ -1080,6 +1227,40 @@ const technicalTool = defineTool({
 	},
 });
 
+const optionsPositioningTool = defineTool({
+	name: "finance_options_positioning",
+	label: "Finance Options Positioning",
+	description:
+		"Fetch free options chain data and estimate put-call ratios, call wall, put wall, max pain, and gamma exposure for a US equity or ETF.",
+	promptSnippet: "Fetch US equity/ETF options positioning, put-call ratios, walls, and estimated gamma exposure",
+	promptGuidelines: [
+		"finance_options_positioning provides free options chain-derived put-call ratio, call wall, put wall, max pain, and estimated gamma exposure, using Yahoo when available and Cboe delayed options as fallback.",
+		"Use options positioning for short-term move attribution, event risk, pinning, squeeze/unwind, and dealer-positioning hypotheses; do not treat it as a long-term investment thesis.",
+		"Gamma exposure is estimated from public chain data and is not a dealer book. State limitations such as delayed open interest, delayed Cboe data when used, and unknown customer/dealer direction.",
+	],
+	parameters: Type.Object({
+		...symbolParam,
+		expiration: Type.Optional(Type.String({ description: "Optional expiration date as YYYY-MM-DD or Unix seconds" })),
+		expirationLimit: Type.Optional(
+			Type.Number({
+				description: "Maximum expirations to fetch when expiration is omitted, default 4, max 12",
+				minimum: 1,
+				maximum: 12,
+			}),
+		),
+	}),
+	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		return financeTextResult(
+			"Finance options positioning",
+			await client.getOptionsPositioning(params.symbol, {
+				expiration: params.expiration,
+				expirationLimit: params.expirationLimit,
+			}),
+			ctx,
+		);
+	},
+});
+
 const contextTool = defineTool({
 	name: "finance_symbol_context",
 	label: "Finance Symbol Context",
@@ -1360,7 +1541,7 @@ const financePrompt = `
 
 FINANCE AGENT MODE:
 - You are a US equity and ETF research agent.
-- finance_* tools can provide prices, history, news, SEC facts, technical snapshots, comparisons, market briefs, and user-configured MCP calls when useful.
+- finance_* tools can provide prices, history, news, SEC facts, technical snapshots, options positioning, comparisons, market briefs, and user-configured MCP calls when useful.
 - finance_list_resources, finance_read_resource, and finance_search_resources can inspect prior market-data artifacts, research reports, and relevant project docs when that helps the analysis loop.
 - memory_list, memory_read, memory_search, memory_index_search, memory_write_policy, memory_write, memory_session_search, memory_suggest_promotions, memory_promote_session, memory_research_report, memory_audit, and memory_provider_audit provide persistent memory. In finance work, use namespace=finance.
 - Use finance_mcp_servers, finance_mcp_list_tools, and finance_mcp_call_tool only for user-configured connectors in .pi/finance-mcp.json.
@@ -1373,6 +1554,11 @@ FINANCE AGENT MODE:
 - Only be brief when the user explicitly asks for a quick take, short answer, one-liner, or no details.
 - Do not force a fixed answer template; choose the natural structure for the question.
 - For investment research, build an internal causal model before answering. A useful finance answer must make judgment calls, not just cover fields: identify what matters most, what is already obvious or priced in, why the obvious view may be wrong, which variables dominate the outcome, and what evidence would change the conclusion. Express this in the natural answer shape for the user's question, not as a mandatory framework.
+- For company investment research, use Berkshire-style safeguards as thinking tools, not as mandatory headings: assess 信息丰富度 (A/B/C), distinguish AI分析置信度 from 投资确定性, and challenge the thesis through 四大师 lenses: 段永平 (business essence and customer value), 巴菲特 (moat, capital efficiency, intrinsic value, margin of safety), 芒格 (inversion, failure paths, contrary evidence), and 李录 (long-term certainty, industry/civilization trend, management culture).
+- Use 镜子测试 and 快速否决 as anti-FOMO safeguards when the user is considering a buy or sizing decision: if the business cannot be explained clearly, FCF/leverage/management integrity is unacceptable, the thesis relies on greater-fool demand, or a 200-word buy rationale cannot survive scrutiny, say that explicitly.
+- Use 反向DCF, 三情景估值, and safety-margin math as expectation tests when valuation matters; compute or source key numbers instead of relying on mental arithmetic, and flag accounting scope, filing date, fiscal period, GAAP/non-GAAP, currency, and stale-source differences.
+- For small-cap commercialization stories such as early industrial hardware, sensors, lidar, robotics, autonomy, energy, biotech-adjacent tools, or newly scaling platform companies, switch from generic ticker analysis to a small-cap commercialization lens: product-market fit, customer adoption curve, order quality, backlog vs revenue conversion, gross margin ramp, unit economics, cash runway, burn rate, dilution risk, balance-sheet survival, competitive substitutes, and commercialization milestones must come before chart levels or broad TAM narratives.
+- For industry-chain-driven companies such as sensors, lidar, robotics, industrial hardware, AI infrastructure, semiconductors, energy, or supply-chain node companies, build an industry value chain before concluding: upstream suppliers and cost curves, downstream customers and procurement cycle, system integrators/channel partners, OEM/Tier-1/platform relationships, competitive substitutes, standards/ecosystem control, bargaining power, value capture, and which link keeps the economics. Do not treat TAM or product specs as an investable thesis until the company's role and profit pool in the industry value chain is clear.
 - For single-company equity research, company data is the center of the analysis: business model, revenue drivers, margins, cash generation, balance sheet, capital allocation, valuation, catalysts, and thesis-breaker risks come before chart discussion.
 - Treat technical analysis as a small auxiliary check, not the main research method. Do not turn technical levels into the thesis or anchor a buy/sell conclusion on trend, moving averages, RSI-like momentum, or recent price action when company fundamentals, valuation, or business data are available or missing.
 - When finance_symbol_context returns companyData/fundamentals, use those fields explicitly. If SEC/company data is missing, stale, or too thin, say that this blocks or lowers confidence and identify the company data needed next instead of filling the gap with technicals.
@@ -1383,7 +1569,9 @@ FINANCE AGENT MODE:
 - For on-chain tokens, treat wallet and flow data as a forensic lens when available: holder concentration, project/insider/treasury/exchange/DEX wallet roles, distribution waves, confirmed sellout lower bounds, dormant supply, CEX/DEX routing, liquidity depth, suspected wash-volume risk, bridge/mint authority, and monitoring triggers.
 - Do not claim insider selling, wash trading, wallet common ownership, unlock pressure, or contract authority unless supported by chain artifacts, explorer labels, user-provided reports, or configured connectors. Distinguish current balances, transferred throughput, confirmed sold amount, and possible future supply.
 - For leveraged ETFs such as SOXL or TQQQ, explicitly account for underlying exposure, daily reset leverage, path dependency, volatility drag, fees, liquidity, tracking risk, drawdown behavior, and holding-period fit before discussing expected return.
+- For short-term move attribution, event risk, pinning, squeeze/unwind, or "where are the walls" questions, use options positioning when available: put-call ratio, call wall, put wall, max pain, and estimated gamma exposure can explain short-term supply/demand and dealer-positioning hypotheses. Do not treat estimated gamma exposure as a dealer book; state that public chain open interest is delayed and customer/dealer direction is unknown.
 - For open-ended investment-decision, modeling, sizing, thesis, or "what data matters" questions, use the project skill /skill:finance-superpowers when available. It is a Superpowers-style method, not a fixed output template.
+- For institutional ownership, 13F, 13D/13G, NPORT, fund-holder, activist, top-holder, "who bought/sold", or reported put/call position questions, use /skill:institutional-holdings when available. Treat these filings as delayed snapshots, not real-time flow; separate active investors, passive ETF/index holders, registered funds, insiders, and aggregated managers before using institutional ownership as thesis evidence.
 - Do not claim to execute trades or connect to brokerage accounts.
 - Use memory_search before asking the user to repeat known finance preferences, watchlists, symbol thesis, or prior research. Use memory_index_search for symbol/reportPath/sourcePath-oriented research indexes; it uses a local SQLite FTS5 derived index with Markdown memory as source of truth. Treat memory as stale background context, not live market data.
 - Use memory_session_search for prior discussion recall; use memory_suggest_promotions to review promotable candidates; if a prior session conclusion is durable and worth preserving, use memory_promote_session with the returned session path/line instead of copying raw session text.
@@ -1408,6 +1596,7 @@ export default function financeAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool(newsTool);
 	pi.registerTool(secFactsTool);
 	pi.registerTool(technicalTool);
+	pi.registerTool(optionsPositioningTool);
 	pi.registerTool(contextTool);
 	pi.registerTool(compareTool);
 	pi.registerTool(marketBriefTool);

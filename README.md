@@ -28,6 +28,10 @@ FinancePi is built around Pi, but the product focus is finance research instead 
 - Support finance-oriented workflow modes for planning, investment-method modeling, and goal tracking
 - Expose CLI and extension hooks for custom finance workflows
 
+## Usage
+
+See [`docs/financepi-usage.md`](docs/financepi-usage.md) for day-to-day usage: startup, model/API key setup, finance workflows, skills, prompt templates, memory, research artifacts, PDF research, and institutional holdings analysis.
+
 ## Development
 
 ```bash

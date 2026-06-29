@@ -130,6 +130,61 @@ export interface TechnicalSnapshot {
 	source: string;
 }
 
+export interface OptionsPositioningOptions {
+	/** Optional expiration date in YYYY-MM-DD or Unix seconds. Defaults to nearest expirations. */
+	expiration?: string;
+	/** Maximum number of expirations to fetch when expiration is omitted. Defaults to 4. */
+	expirationLimit?: number;
+}
+
+export interface OptionWall {
+	strike: number;
+	callOpenInterest: number;
+	putOpenInterest: number;
+	totalOpenInterest: number;
+}
+
+export interface OptionGammaByStrike extends OptionWall {
+	callVolume: number;
+	putVolume: number;
+	callGammaExposure: number;
+	putGammaExposure: number;
+	netGammaExposure: number;
+	grossGammaExposure: number;
+}
+
+export interface OptionsPositioningSummary {
+	callVolume: number;
+	putVolume: number;
+	callOpenInterest: number;
+	putOpenInterest: number;
+	volumePutCallRatio: number | null;
+	openInterestPutCallRatio: number | null;
+	callWall: OptionWall | null;
+	putWall: OptionWall | null;
+	maxPain: OptionWall | null;
+	estimatedNetGammaExposure: number;
+	estimatedGrossGammaExposure: number;
+	gammaByStrike: OptionGammaByStrike[];
+	contracts: number;
+}
+
+export interface OptionsExpirationPositioning extends OptionsPositioningSummary {
+	expirationDate: string;
+}
+
+export interface OptionsPositioning {
+	symbol: string;
+	market: MarketCode;
+	underlyingPrice: number | null;
+	asOf: string;
+	expirationDates: string[];
+	expirations: OptionsExpirationPositioning[];
+	summary: OptionsPositioningSummary;
+	source: string;
+	limitations: string[];
+}
+
 export interface SymbolContext {
 	ok: true;
 	symbol: string;

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Institutional Holdings"
+  short_description: "Analyze 13F, 13D/13G, and fund ownership"
+  default_prompt: "Use $institutional-holdings to analyze who owns this stock and whether institutional ownership changes matter."

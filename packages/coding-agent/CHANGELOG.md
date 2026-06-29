@@ -27,6 +27,10 @@
 - Added model-visible provider health summaries for enriched finance data sources, including configured/used/degraded status for Finnhub, Alpha Vantage, and FRED-backed results.
 - Added a project `pdf-research` skill with a reusable PDF text/table extractor and finance-agent guidance to proactively use it for PDF reports and filings.
 - Added on-chain token forensic research guidance for holder concentration, wallet roles, distribution waves, confirmed sellout lower bounds, liquidity quality, bridge/mint authority, and monitoring triggers.
+- Added Berkshire-style value-investing safeguards to FinancePi research guidance, including information-richness grading, AI confidence vs investment certainty, four-investor lenses, mirror tests, veto checks, and reverse-DCF/scenario valuation pressure tests.
+- Added industry value-chain guidance to FinancePi research so ecosystem-position names analyze upstream suppliers, downstream customers, procurement cycles, system integrators, bargaining power, and value capture before relying on TAM or product specs.
+- Added a project `institutional-holdings` skill for 13F, 13D/13G, NPORT, activist, top-holder, fund ownership, and institutional flow interpretation.
+- Added options positioning research support for free options-chain-derived put-call ratios, call/put walls, max pain, and estimated gamma exposure, with Cboe delayed fallback when Yahoo options is unavailable.
 - Changed session memory search to omit matches that cannot be traced to a real JSONL source line, keeping every returned match promotable.
 - Added public API exports for memory audit and compact result types used by external extensions.
 - Added project/session/namespace context for external memory provider tool calls.
